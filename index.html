@@ -74,6 +74,7 @@
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
 	controls.enableZoom = false;
+	controls.mouseButtons.WHEEL = null; 
 
     scene.add(new THREE.AmbientLight(0x5260a8, 0.28));
     const keyLight = new THREE.DirectionalLight(0xaec8ff, 0.8);
