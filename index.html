@@ -43,7 +43,7 @@
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+    //import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
     import { Line2 } from 'three/addons/lines/Line2.js';
     import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
     import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
@@ -58,7 +58,8 @@
     const BASE_SPEED = 0.35;
     let MAX_LINKS_PER_NODE = 12;
     let FILTER_TYPE = 'any'; // 'any' | 'is_a' | 'associated'
-
+	
+	
     // ==== SCENE ====
     const container = document.getElementById('container');
   	const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -72,6 +73,7 @@
     camera.position.set(0, 0, 500);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+	controls.enableZoom = false;
 
     scene.add(new THREE.AmbientLight(0x5260a8, 0.28));
     const keyLight = new THREE.DirectionalLight(0xaec8ff, 0.8);
@@ -392,25 +394,31 @@ function updatePointSizes(){
     }
 
     // ==== GUI ====
-    const gui = new GUI();
-    const params = {
-      rotationSpeedY: 0.0005,
-      maxLinksPerNode: MAX_LINKS_PER_NODE,
-      linkType: FILTER_TYPE // any, is_a, associated
-    };
-    gui.add(params, 'rotationSpeedY', 0, 0.01, 0.0005).name('Turn speed Y');
-    gui.add(params, 'maxLinksPerNode', 1, 30, 1).name('Max links / node').onChange(v=>{ MAX_LINKS_PER_NODE = v|0; rebuildLines(hoverIndex); });
-    gui.add(params, 'linkType', ['any','is_a','associated']).name('Link type').onChange(v=>{ FILTER_TYPE = v; rebuildLines(hoverIndex); });
-   gui.close(); 
+    // const gui = new GUI();
+     // const params = {
+    //   rotationSpeedY: 0.0005,
+    //   maxLinksPerNode: MAX_LINKS_PER_NODE,
+    //  linkType: FILTER_TYPE // any, is_a, associated
+   // };
+   // gui.add(params, 'rotationSpeedY', 0, 0.01, 0.0005).name('Turn speed Y');
+  //  gui.add(params, 'maxLinksPerNode', 1, 30, 1).name('Max links / node').onChange(v=>{ MAX_LINKS_PER_NODE = v|0; rebuildLines(hoverIndex); });
+  //  gui.add(params, 'linkType', ['any','is_a','associated']).name('Link type').onChange(v=>{ FILTER_TYPE = v; rebuildLines(hoverIndex); });
+ //  gui.close(); 
 
     // ==== ANIMATE ====
+
     let rotationY = 0;
     function animate(){
       updatePositions();
+      
+    	
       // Линии перестраиваем только по событиям (hover/gui), поэтому здесь не вызываем rebuildLines()
       updateHover();
 
-      rotationY += params.rotationSpeedY;
+	
+const ROTATION_SPEED_Y = 0.0005;
+		rotationY += ROTATION_SPEED_Y; 
+		
       group.rotation.y = rotationY;
 
       controls.update();
