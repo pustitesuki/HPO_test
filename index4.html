@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>LLM Fibers — flow-bundled curves with endpoints</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body { margin:0; height:100%; background:#050505; overflow:hidden; }
+    #container { width:100%; height:100%; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="container"></div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { Line2 } from 'three/addons/lines/Line2.js';
+    import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+    import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+
+    // ====== PARAMS ======
+    const DATA_URL = 'hpo_graph_b.json';
+    const MAX_POINTS = 10000;         // запас по узлам
+    const R = 120;
+    const ROT_SPEED_Y = 0.0004;       // медленное вращение вокруг Y
+    const WIDTH_NEAR_FAR = [0.01, 0.3];
+    const ENDPOINT_SIZE = 8.8;        // точки на концах связей
+    const BG = new THREE.Color('#1B2638');
+    const CYAN = new THREE.Color('#01DCFE');
+    const WHITE = new THREE.Color('#AEF4FF');
+
+    // ====== RENDERER / SCENE ======
+    const container = document.getElementById('container');
+    const renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setClearColor(BG, 1);
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.01, 4000);
+    camera.position.set(18, -12, 300);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enableZoom = false;
+    controls.mouseButtons.WHEEL = null;
+
+    scene.add(new THREE.AmbientLight(0x8eb8ff, 0.10));
+    const key = new THREE.DirectionalLight(0xffffff, 0.65);
+    key.position.set(1,1,1);
+    scene.add(key);
+
+    const root = new THREE.Group();
+    root.rotation.set(0.07, -0.18, 0.05);
+    scene.add(root);
+
+    // ====== DATA CONTAINERS ======
+    const posArr = new Float32Array(MAX_POINTS*3); // позиции узлов (невиз.)
+    let COUNT = 0;
+    let NODES=[], EDGES=[], ADJ=[], id2index=new Map();
+
+    // ====== UTILS ======
+    function randn(){ // Box–Muller
+      let u=0,v=0; while(!u) u=Math.random(); while(!v) v=Math.random();
+      return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+    }
+    function hash3(v){
+      return new THREE.Vector3(
+        Math.sin(v.x*12.9898 + v.y*78.233 + v.z*37.719)*43758.5453,
+        Math.sin(v.x*93.9898 + v.y*67.345 + v.z*12.345)*24634.6345,
+        Math.sin(v.x*45.332  + v.y*12.345 + v.z*98.765)*12456.1234
+      );
+    }
+    function noise3(p){
+      const s = 0.0008;
+      const h = hash3(p.clone().multiplyScalar(s));
+      return new THREE.Vector3(
+        (h.x - Math.floor(h.x)) - 0.1,
+        (h.y - Math.floor(h.y)) - 0.5,
+        (h.z - Math.floor(h.z)) - 0.1
+      );
+    }
+    function curlNoise(p){
+      const e=0.8;
+      const dx1=noise3(new THREE.Vector3(p.x+e,p.y,p.z));
+      const dx2=noise3(new THREE.Vector3(p.x-e,p.y,p.z));
+      const dy1=noise3(new THREE.Vector3(p.x,p.y+e,p.z));
+      const dy2=noise3(new THREE.Vector3(p.x,p.y-e,p.z));
+      const dz1=noise3(new THREE.Vector3(p.x,p.y,p.z+e));
+      const dz2=noise3(new THREE.Vector3(p.x,p.y,p.z-e));
+      const x = dy1.z-dy2.z - (dz1.y-dz2.y);
+      const y = dz1.x-dz2.x - (dx1.z-dx2.z);
+      const z = dx1.y-dx2.y - (dy1.x-dy2.x);
+      return new THREE.Vector3(x,y,z).normalize();
+    }
+
+    // ====== INITIAL NODE POSITIONS (ellipsoid, slight offset) ======
+    function initNodePosition(i){
+      const u = Math.random(), v = Math.random();
+      const theta = 2*Math.PI*u;
+      const phi = Math.acos(2*v - 1);
+      const radius = R * Math.cbrt(Math.random());
+      const ax=1.0, ay=0.7, az=0.92;
+      const x = radius * Math.sin(phi)*Math.cos(theta) * ax + 16.0;
+      const y = radius * Math.sin(phi)*Math.sin(theta) * ay - 6.0;
+      const z = radius * Math.cos(phi)                 * az + 1.0;
+      posArr[i*3+0]=x; posArr[i*3+1]=y; posArr[i*3+2]=z;
+    }
+
+    // ====== LOAD GRAPH ======
+    async function loadData(){
+      const data = await fetch(DATA_URL).then(r=>r.json());
+      NODES = data.nodes || data.Nodes || [];
+      EDGES = data.edges || data.Edges || [];
+      buildAdj();
+      COUNT = Math.min(NODES.length, MAX_POINTS);
+      for(let i=0;i<COUNT;i++) initNodePosition(i);
+      placeAttractorsFromHubs();
+      buildFlowSpine();
+      buildEndpointsPoints();  // точки на концах связей
+      rebuildLines();
+      animate();
+    }
+
+    function buildAdj(){
+      ADJ = Array.from({length:NODES.length}, ()=>[]);
+      id2index.clear();
+      NODES.forEach((n,i)=>id2index.set(n.id ?? n.ID ?? n.name ?? i, i));
+      const seen = new Set();
+      for (const e of EDGES){
+        const a = id2index.get(e.source ?? e.from ?? e.s ?? e.u);
+        const b = id2index.get(e.target ?? e.to   ?? e.t ?? e.v);
+        if (a==null || b==null || a===b) continue;
+        const key = a<b ? `${a}|${b}` : `${b}|${a}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        ADJ[a].push(b);
+        ADJ[b].push(a);
+      }
+    }
+
+    // ====== ATTRACTORS FROM HUBS ======
+    let ATTR = [];
+    const nodeAttractorIndex = new Int16Array(MAX_POINTS);
+
+    function topHubIndices(k=6){
+      const deg = ADJ.map(a=>a?.length||0);
+      return [...deg.map((d,i)=>[d,i])].sort((a,b)=>b[0]-a[0]).slice(0,k).map(x=>x[1]);
+    }
+    function placeAttractorsFromHubs(){
+      const hubs = topHubIndices(5 + (Math.random()*3|0)); // 5–7
+      ATTR = [];
+      for (const i of hubs){
+        const base = new THREE.Vector3(posArr[i*3], posArr[i*3+1], posArr[i*3+2]).normalize();
+        const r = R * (0.55 + Math.random()*0.27);
+        const jitter = new THREE.Vector3(randn()*0.12, randn()*0.12, randn()*0.12);
+        const dir = base.add(jitter).normalize();
+        ATTR.push(dir.multiplyScalar(r));
+      }
+      // 1–2 faux-центра
+      const faux = 1 + (Math.random()<0.5?0:1);
+      for(let k=0;k<faux;k++){
+        const theta = Math.random()*Math.PI*2;
+        const phi = Math.acos(2*Math.random()-1);
+        const r = R*(0.45 + Math.random()*0.35);
+        ATTR.push(new THREE.Vector3(
+          r*Math.sin(phi)*Math.cos(theta),
+          r*Math.sin(phi)*Math.sin(theta),
+          r*Math.cos(phi)
+        ));
+      }
+      assignAttractors();
+    }
+    function assignAttractors(){
+      for(let i=0;i<COUNT;i++){
+        const p = new THREE.Vector3(posArr[i*3], posArr[i*3+1], posArr[i*3+2]);
+        let best=0, bestD=Infinity;
+        for(let k=0;k<ATTR.length;k++){
+          const d = p.distanceToSquared(ATTR[k]);
+          if(d<bestD){ bestD=d; best=k; }
+        }
+        nodeAttractorIndex[i]=best;
+      }
+    }
+
+    // ====== LAUNCH RING: tangential start/finish ======
+    function launchAnchor(p, attractor, radius=12){
+      const r = p.clone().sub(attractor).normalize();
+      const up = new THREE.Vector3(0.0, 1.0, 0.15).normalize();
+      let t = new THREE.Vector3().crossVectors(up, r);
+      if (t.lengthSq()<1e-6) t = new THREE.Vector3().crossVectors(new THREE.Vector3(1,0,0), r);
+      t.normalize();
+      const jitter = curlNoise(p).multiplyScalar(3 + Math.random()*2);
+      return p.clone().add( t.multiplyScalar(radius*(0.8 + Math.random()*0.6)) ).add(jitter);
+    }
+
+    // ====== LIGHT BUNDLING ======
+    function buildEdgeMidpoints(){
+      const mids=[], pairs=[];
+      for (let i=0;i<COUNT;i++){
+        const ai = nodeAttractorIndex[i];
+        const p1 = new THREE.Vector3(posArr[i*3], posArr[i*3+1], posArr[i*3+2]);
+        for (const j of ADJ[i] || []){
+          if(i>=j) continue;
+          const p2 = new THREE.Vector3(posArr[j*3], posArr[j*3+1], posArr[j*3+2]);
+          const mid = p1.clone().add(p2).multiplyScalar(0.5);
+          mids.push({ mid, i, j, ai, aj: nodeAttractorIndex[j] });
+          pairs.push([i,j]);
+        }
+      }
+      return {mids,pairs};
+    }
+    function bundleMidpoints(mids, iterations=3){
+      const ATTR_K = ATTR.map(()=> 16 + Math.random()*16);
+      const ANG = Math.cos(Math.PI/5.2);
+      for(let it=0; it<iterations; it++){
+        for(let a=0;a<mids.length;a++){
+          const A=mids[a];
+          for(let b=a+1;b<mids.length;b++){
+            const B=mids[b];
+            if (A.ai!==B.ai && A.aj!==B.aj) continue;
+            const vA=A.mid.clone().normalize().multiplyScalar(-1);
+            const vB=B.mid.clone().normalize().multiplyScalar(-1);
+            if (vA.dot(vB)<ANG) continue;
+            const d=A.mid.distanceTo(B.mid);
+            if (d>95) continue;
+            const K=0.05*(ATTR_K[A.ai]+ATTR_K[B.ai])*0.5;
+            const pull=(K/(d+1));
+            const target = A.mid.clone().add(B.mid).multiplyScalar(0.5)
+              .add(curlNoise(A.mid.clone().add(B.mid).multiplyScalar(0.5)).multiplyScalar(5+Math.random()*6));
+            A.mid.lerp(target,pull);
+            B.mid.lerp(target,pull);
+          }
+        }
+      }
+    }
+
+    // ====== GLOBAL FLOW SPINE ======
+    let FLOW_SPINE=null;
+    function buildFlowSpine(){
+      const ordered = ATTR.slice().sort((a,b)=>Math.atan2(a.y,a.x)-Math.atan2(b.y,b.x));
+      FLOW_SPINE = new THREE.CatmullRomCurve3(ordered, false, 'centripetal', 0.3);
+    }
+    function nearestOnSpine(p){
+      if(!FLOW_SPINE) return p;
+      const S=50; let bestP=null, bestD=Infinity;
+      for(let i=0;i<=S;i++){
+        const q = FLOW_SPINE.getPoint(i/S);
+        const d = q.distanceToSquared(p);
+        if(d<bestD){ bestD=d; bestP=q; }
+      }
+      return bestP;
+    }
+
+    // ====== CURVE GENERATION (tangent + flow) ======
+    const WIND = new THREE.Vector3(0.95, -0.5, 0.2);
+    function edgePolylineBundled(p1, p2, a1, a2, midBundled){
+      const start = launchAnchor(p1, a1, 32);
+      const end   = launchAnchor(p2, a2, 42);
+      const L = p1.distanceTo(p2);
+      const curlAmp = 3 + Math.min(2, L*0.98);
+      const spineTarget = nearestOnSpine(midBundled);
+      const midFlow = midBundled.clone().lerp(spineTarget, 0.55);
+      const m  = start.clone().add(end).multiplyScalar(0.3);
+      const q1 = start.clone().lerp(a1, 0.92);
+      const q2 = q1.clone().lerp(midFlow, 0.95);
+      const q3 = m.clone().add(curlNoise(m).multiplyScalar(curlAmp)).add(WIND.clone().multiplyScalar(44));
+      const q4 = q3.clone().lerp(a2, 0.60);
+      const q5 = q4.clone().lerp(end, 0.99);
+      const curve = new THREE.CatmullRomCurve3([p1,start,q1,q2,midFlow,q3,q4,q5,end,p2], false, 'centripetal', 0.55);
+      return curve.getPoints(42 + (Math.random()*32|0));
+    }
+
+    // ====== LINES (white -> #01DCFE -> #1A2537 with soft ends) ======
+    const linesGroup = new THREE.Group();
+    root.add(linesGroup);
+
+    function setGradientColors(lineGeometry, pts){
+      const colors=[];
+      for(let i=0;i<pts.length;i++){
+        const t = i/(pts.length-1);            // 0..1
+        const base = WHITE.clone().lerp(CYAN, t); // белый → циан
+        const endFade = Math.min(1, Math.min(t,1-t) * 1); // мягкие концы
+        const col = BG.clone().lerp(base, endFade);         // к фону на концах
+        colors.push(col.r, col.g, col.b);
+      }
+      lineGeometry.setColors(colors);
+    }
+
+    function rebuildLines(){
+      linesGroup.clear();
+      const {mids,pairs} = buildEdgeMidpoints();
+      bundleMidpoints(mids,3);
+
+      let k=0;
+      for (let idx=0; idx<pairs.length; idx++){
+        const [i,j]=pairs[idx];
+        if(i>=COUNT || j>=COUNT) continue;
+
+        const p1 = new THREE.Vector3(posArr[i*3],posArr[i*3+1],posArr[i*3+2]);
+        const p2 = new THREE.Vector3(posArr[j*3],posArr[j*3+1],posArr[j*3+2]);
+        const a1 = ATTR[nodeAttractorIndex[i]];
+        const a2 = ATTR[nodeAttractorIndex[j]];
+        const midBundled = mids[k++].mid;
+
+        const pts = edgePolylineBundled(p1,p2,a1,a2,midBundled);
+        const flat=[]; for(const p of pts) flat.push(p.x,p.y,p.z);
+
+        const g = new LineGeometry();
+        g.setPositions(flat);
+        setGradientColors(g, pts);
+
+        const dist = p1.distanceTo(p2);
+        const hubBias = 1.0 + (nodeAttractorIndex[i]===nodeAttractorIndex[j] ? 0.25 : -0.1);
+        const w = THREE.MathUtils.clamp(
+          WIDTH_NEAR_FAR[1]*hubBias - dist/90,
+          WIDTH_NEAR_FAR[0], WIDTH_NEAR_FAR[1]*1.15
+        ) + Math.random()*0.25;
+
+        const m = new LineMaterial({
+          linewidth: w,
+          vertexColors: true,
+          transparent: true,
+          opacity: 0.7,
+          depthTest: true,
+          blending: THREE.AdditiveBlending
+        });
+        m.resolution.set(innerWidth, innerHeight);
+
+        // depth-fade
+        m.onBeforeCompile = (shader)=>{
+          shader.fragmentShader = shader.fragmentShader.replace(
+            'gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
+            `
+              float depth = gl_FragCoord.z / gl_FragCoord.w;
+              float df = clamp(1.0 - (depth*0.0009), 0.55, 1.0);
+              gl_FragColor = vec4( outgoingLight * df, diffuseColor.a );
+            `
+          );
+        };
+
+        const line = new Line2(g, m);
+        linesGroup.add(line);
+      }
+      // обновим точки-узлы (на концах) после пересборки линий
+      refreshEndpointPositions();
+    }
+
+    // ====== ENDPOINT DOTS (points at line ends only) ======
+    const endpointsGroup = new THREE.Group();
+    root.add(endpointsGroup);
+
+    let endpointsPositions = [];
+    let endpointsGeo, endpointsMat, endpointsPoints;
+
+    function buildEndpointsPoints(){
+      // собираем уникальные индексы узлов, участвующих в ребрах
+      const used = new Set();
+      for(let i=0;i<ADJ.length;i++){
+        if(!ADJ[i]) continue;
+        if(ADJ[i].length>0) used.add(i);
+      }
+      endpointsPositions = [...used];
+      // создаем геометрию под эти точки
+      endpointsGeo = new THREE.BufferGeometry();
+      const arr = new Float32Array(endpointsPositions.length * 3);
+      endpointsGeo.setAttribute('position', new THREE.BufferAttribute(arr,3).setUsage(THREE.DynamicDrawUsage));
+
+      endpointsMat = new THREE.ShaderMaterial({
+        transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+        vertexShader:`
+          uniform float uSize;
+          varying float vDepth;
+          void main(){
+            vec4 mv = modelViewMatrix * vec4(position,1.0);
+            vDepth = -mv.z;
+            gl_PointSize = uSize * (300.0 / -mv.z);
+            gl_Position = projectionMatrix * mv;
+          }
+        `,
+        fragmentShader:`
+          uniform vec3 uCyan;
+          uniform vec3 uWhite;
+          uniform vec3 uBg;
+          varying float vDepth;
+          void main(){
+            vec2 d = gl_PointCoord - vec2(0.5);
+            float r = length(d);
+            float soft = smoothstep(0.5, 0.05, r);   // мягкий круг
+            // белая сердцевина → циан, затем к фону по краям
+            vec3 base = mix(uWhite, uCyan, 0.5);
+            vec3 col = mix(uBg, base, soft);
+            gl_FragColor = vec4(col, soft);
+          }
+        `,
+        uniforms:{
+          uSize:{ value: ENDPOINT_SIZE },
+          uCyan:{ value: CYAN.clone() },
+          uWhite:{ value: WHITE.clone() },
+          uBg:{ value: BG.clone() }
+        }
+      });
+
+      endpointsPoints = new THREE.Points(endpointsGeo, endpointsMat);
+      endpointsGroup.add(endpointsPoints);
+      refreshEndpointPositions();
+    }
+
+    function refreshEndpointPositions(){
+      if(!endpointsGeo) return;
+      const arr = endpointsGeo.attributes.position.array;
+      for(let idx=0; idx<endpointsPositions.length; idx++){
+        const i = endpointsPositions[idx];
+        arr[idx*3+0]=posArr[i*3];
+        arr[idx*3+1]=posArr[i*3+1];
+        arr[idx*3+2]=posArr[i*3+2];
+      }
+      endpointsGeo.attributes.position.needsUpdate = true;
+    }
+
+    // ====== ANIMATE ======
+    function animate(){
+      requestAnimationFrame(animate);
+      root.rotation.y += ROT_SPEED_Y;   // медленное вращение вокруг Y
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // ====== RESIZE ======
+    addEventListener('resize', ()=>{
+      camera.aspect = innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      for (const l of linesGroup.children){
+        l.material.resolution.set(innerWidth, innerHeight);
+      }
+    });
+
+    // GO
+    loadData();
+  </script>
+</body>
+</html>
