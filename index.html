@@ -2,26 +2,14 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <title>HPO Sphere — instant spawn + hover highlight + callouts</title>
+  <title>HPO Sphere — static view</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link
-  href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
-  rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    html, body { margin:0; height:100%;  background: transparent;  overflow:hidden; font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    html, body { margin:0; height:100%; background:transparent; overflow:hidden; font-family:Space Grotesk,ui-sans-serif,system-ui; }
     #container { width:100%; height:100%; }
-    /* Tooltip */
-    #tooltip {
-      position: fixed; pointer-events:none; z-index:10; padding:16px 16px; max-width:380px;
-      background: rgba(17,23,34,0.3); color:#eaf6ff; border:0px solid rgba(105,185,255,0.35);
-      border-radius:16px; transform:translate(-50%,-130%);
-      transition: opacity .08s ease-out; backdrop-filter: blur(6px);
-    }
-    #tooltip .id   { font: 12px/1.2 ui-monospace, Space Grotesk, monospace; opacity:.85; letter-spacing:.2px }
-    #tooltip .name { font: 14px/1.35 Space Grotesk,system-ui,sans-serif; margin-top:4px }
-    #tooltip .meta { font: 12px/1.25 Space Grotesk,system-ui,sans-serif; opacity:.8; margin-top:6px }
   </style>
   <script type="importmap">
     {
@@ -34,414 +22,224 @@
 </head>
 <body>
   <div id="container"></div>
-  <div id="tooltip">
-    <div class="id"></div>
-    <div class="name"></div>
-    <div class="meta"></div>
-  </div>
 
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    //import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
     import { Line2 } from 'three/addons/lines/Line2.js';
     import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
     import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
-    // ==== DATA ====
-    const DATA_URL = 'hpo_graph.json'; // <-- подставь свой файл (запускать через http://localhost)
-
-    // ==== PARAMS ====
+    const DATA_URL = 'hpo_graph.json';
     const MAX = 5000;
     const R = 140;
     const ALLOWED_RADIUS = R * 1.2;
     const BASE_SPEED = 0.35;
     let MAX_LINKS_PER_NODE = 12;
-    let FILTER_TYPE = 'any'; // 'any' | 'is_a' | 'associated'
-	
-	
-    // ==== SCENE ====
+    let FILTER_TYPE = 'any';
+
     const container = document.getElementById('container');
-  	const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
     renderer.setSize(innerWidth, innerHeight);
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
- 	renderer.setClearColor(0x000000, 0); // полностью прозрачный
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setClearColor(0x000000,0);
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 5000);
-    camera.position.set(0, 0, 500);
+    camera.position.set(0,0,500);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-	controls.enableZoom = false;
-	controls.mouseButtons.WHEEL = null; 
+    controls.enableZoom = false;
+    controls.mouseButtons.WHEEL = null;
 
-    scene.add(new THREE.AmbientLight(0x5260a8, 0.28));
-    const keyLight = new THREE.DirectionalLight(0xaec8ff, 0.8);
+    scene.add(new THREE.AmbientLight(0x5260a8,0.28));
+    const keyLight = new THREE.DirectionalLight(0xaec8ff,0.8);
     keyLight.position.set(1,1,1);
     scene.add(keyLight);
 
     const group = new THREE.Group();
     scene.add(group);
 
-    // ==== COLORS ====
     const BLUE_DARK  = new THREE.Color('#69B9FF');
     const BLUE_LIGHT = new THREE.Color('#EAF6FF');
-    const HOVER_CYAN = new THREE.Color('#00D7FF');
     function blueGradient(t){ return BLUE_DARK.clone().lerp(BLUE_LIGHT, THREE.MathUtils.clamp(t,0,1)); }
 
-    // ==== BUFFERS ====
     const posArr = new Float32Array(MAX*3);
     const colorArr = new Float32Array(MAX*3);
-    const vel = Array.from({length: MAX}, () => new THREE.Vector3());
+    const vel = Array.from({length:MAX},()=>new THREE.Vector3());
 
     function setPointColor(i){
-      colorArr[i*3+0] = 0.82;
-      colorArr[i*3+1] = 0.92;
-      colorArr[i*3+2] = 1.00;
-    }
-    function tintPoint(i, color) {
-      colorArr[i*3+0] = color.r;
-      colorArr[i*3+1] = color.g;
-      colorArr[i*3+2] = color.b;
-    }
-    function highlightPoint(i, on) {
-      if (i < 0 || i >= COUNT) return;
-      if (on) tintPoint(i, HOVER_CYAN);
-      else setPointColor(i);
-      geoPoints.attributes.color.needsUpdate = true;
+      colorArr[i*3+0]=0.82; colorArr[i*3+1]=0.92; colorArr[i*3+2]=1.00;
     }
 
     function initParticle(i){
-      // равномерно по шару радиуса R
       const u=Math.random(), v=Math.random(), w=Math.random();
-      const phi = Math.acos(2*u - 1);
-      const theta = 2*Math.PI*v;
-      const radius = R * Math.cbrt(w);
-      posArr[i*3+0] = radius * Math.sin(phi) * Math.cos(theta);
-      posArr[i*3+1] = radius * Math.cos(phi);
-      posArr[i*3+2] = radius * Math.sin(phi) * Math.sin(theta);
-
-      // индивидуальная скорость
-      const dir = new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
-      const speed = (0.5 + Math.random()*0.75) * BASE_SPEED;
+      const phi=Math.acos(2*u-1);
+      const theta=2*Math.PI*v;
+      const radius=R*Math.cbrt(w);
+      posArr[i*3+0]=radius*Math.sin(phi)*Math.cos(theta);
+      posArr[i*3+1]=radius*Math.cos(phi);
+      posArr[i*3+2]=radius*Math.sin(phi)*Math.sin(theta);
+      const dir=new THREE.Vector3(Math.random()-0.5,Math.random()-0.5,Math.random()-0.5).normalize();
+      const speed=(0.5+Math.random()*0.75)*BASE_SPEED;
       vel[i].copy(dir.multiplyScalar(speed));
-
       setPointColor(i);
     }
 
-    const geoPoints = new THREE.BufferGeometry();
-    geoPoints.setAttribute('position', new THREE.BufferAttribute(posArr,3).setUsage(THREE.DynamicDrawUsage));
-    geoPoints.setAttribute('color',    new THREE.BufferAttribute(colorArr,3));
-    geoPoints.setDrawRange(0, 0);
+    const geoPoints=new THREE.BufferGeometry();
+    geoPoints.setAttribute('position',new THREE.BufferAttribute(posArr,3).setUsage(THREE.DynamicDrawUsage));
+    geoPoints.setAttribute('color',new THREE.BufferAttribute(colorArr,3));
+    geoPoints.setDrawRange(0,0);
 
-    
-    // === Per-point size via ShaderMaterial ===
-    const vertexShader = `
+    const vertexShader=`
       attribute float size;
       attribute vec3 color;
       varying vec3 vColor;
-      void main() {
-        vColor = color;
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        // Perspective size attenuation: tweak the constant (300.0) to taste
-        float attenuatedSize = size * (300.0 / -mvPosition.z);
-        gl_PointSize = attenuatedSize;
-        gl_Position = projectionMatrix * mvPosition;
+      void main(){
+        vColor=color;
+        vec4 mvPosition=modelViewMatrix*vec4(position,1.0);
+        float attenuatedSize=size*(300.0/-mvPosition.z);
+        gl_PointSize=attenuatedSize;
+        gl_Position=projectionMatrix*mvPosition;
       }
     `;
-
-    const fragmentShader = `
+    const fragmentShader=`
       varying vec3 vColor;
-      void main() {
-        // Make points circular with smooth edge
-        vec2 c = gl_PointCoord - vec2(0.5);
-        float r = length(c);
-        // soft edge
-        float alpha = smoothstep(0.5, 0.48, r);
-        gl_FragColor = vec4(vColor, alpha);
+      void main(){
+        vec2 c=gl_PointCoord-vec2(0.5);
+        float r=length(c);
+        float alpha=smoothstep(0.5,0.48,r);
+        gl_FragColor=vec4(vColor,alpha);
       }
     `;
 
-    const pointsMat = new THREE.ShaderMaterial({
-      vertexShader,
-      fragmentShader,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
+    const pointsMat=new THREE.ShaderMaterial({
+      vertexShader,fragmentShader,transparent:true,
+      blending:THREE.AdditiveBlending,depthWrite:false
     });
-
-    // Ensure geometry has 'color' attribute already; we'll add 'size' below.
-    const points = new THREE.Points(geoPoints, pointsMat);
+    const points=new THREE.Points(geoPoints,pointsMat);
     group.add(points);
 
-
-    // Lines
-    const lineGeom = new LineGeometry();
-    const lineMat = new LineMaterial({
-      linewidth: 0.25,
-      transparent: true,
-      opacity: 1,
-      vertexColors: true,
-      blending: THREE.AdditiveBlending,
-      depthTest: false,
-      depthWrite: false
+    const lineGeom=new LineGeometry();
+    const lineMat=new LineMaterial({
+      linewidth:0.25,transparent:true,opacity:1,vertexColors:true,
+      blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false
     });
-    lineMat.resolution.set(innerWidth, innerHeight);
-    const lineMesh = new Line2(lineGeom, lineMat);
+    lineMat.resolution.set(innerWidth,innerHeight);
+    const lineMesh=new Line2(lineGeom,lineMat);
     group.add(lineMesh);
 
-    // ==== GRAPH ====
-    let NODES = [];
-    let EDGES_RAW = [];
-    let ADJ = [];
-    let id2index = new Map();
-    let COUNT = 0;
+    let NODES=[],EDGES_RAW=[],ADJ=[],id2index=new Map(),COUNT=0;
 
     function buildAdjacency(){
-      ADJ = Array.from({length: NODES.length}, ()=>[]);
+      ADJ=Array.from({length:NODES.length},()=>[]);
       id2index.clear();
-      NODES.forEach((n, i)=> id2index.set(n.id, i));
+      NODES.forEach((n,i)=>id2index.set(n.id,i));
       for(const e of EDGES_RAW){
-        const a = id2index.get(e.source);
-        const b = id2index.get(e.target);
-        if (a==null || b==null || a===b) continue;
-        const t = e.type || 'associated';
-        ADJ[a].push({ j:b, type:t });
-        ADJ[b].push({ j:a, type:t });
+        const a=id2index.get(e.source), b=id2index.get(e.target);
+        if(a==null||b==null||a===b)continue;
+        const t=e.type||'associated';
+        ADJ[a].push({j:b,type:t});
+        ADJ[b].push({j:a,type:t});
       }
     }
 
-    // ==== INIT ALL AT ONCE ====
     function spawnAll(){
-      COUNT = Math.min(NODES.length, MAX);
-      for (let i=0; i<COUNT; i++) initParticle(i);
-      geoPoints.setDrawRange(0, COUNT);
-      geoPoints.attributes.position.needsUpdate = true;
-      geoPoints.attributes.color.needsUpdate = true;
-      updatePointSizes(); // set point sizes by degree
-      rebuildLines(); // первичная отрисовка
+      COUNT=Math.min(NODES.length,MAX);
+      for(let i=0;i<COUNT;i++)initParticle(i);
+      geoPoints.setDrawRange(0,COUNT);
+      geoPoints.attributes.position.needsUpdate=true;
+      geoPoints.attributes.color.needsUpdate=true;
+      updatePointSizes();
+      rebuildLines();
     }
 
-// ==== SIZE BASED ON DEGREE ====
-function updatePointSizes(){
-  const sizes = new Float32Array(COUNT);
-  for (let i = 0; i < COUNT; i++) {
-    const degree = (ADJ[i]?.length || 0);
-    // base 3.8px + 2px per link
-    sizes[i] = 3.8 + degree * 2.0;
-  }
-  geoPoints.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-  geoPoints.attributes.size.needsUpdate = true;
-}
-
-    // ==== LINES (data-driven) ====
-    function rebuildLines(highlightIdx = -1){
-      const P=[]; const C=[];
-      if (COUNT < 2) {
-        P.push(0,0,0, 0,0,0); C.push(1,1,1, 1,1,1);
-        lineGeom.setPositions(P); lineGeom.setColors(C); lineGeom.needsUpdate = true;
-        return;
-      }
-
-      const addEdge = (ia, ib, isHighlight) => {
-        const ax=posArr[ia*3], ay=posArr[ia*3+1], az=posArr[ia*3+2];
-        const bx=posArr[ib*3], by=posArr[ib*3+1], bz=posArr[ib*3+2];
-
-        if (isHighlight) {
-          const c = HOVER_CYAN;
-          P.push(ax,ay,az, bx,by,bz);
-          C.push(c.r,c.g,c.b, c.r,c.g,c.b);
-        } else {
-          const d = Math.hypot(ax-bx, ay-by, az-bz);
-          const t = THREE.MathUtils.clamp(1 - d/(R*1.2), 0, 1);
-          const col = blueGradient(0.6 + 0.4*t);
-          P.push(ax,ay,az, bx,by,bz);
-          C.push(col.r,col.g,col.b, col.r,col.g,col.b);
-        }
-      };
-
+    function updatePointSizes(){
+      const sizes=new Float32Array(COUNT);
       for(let i=0;i<COUNT;i++){
-        const nbrs = ADJ[i];
-        if (!nbrs || !nbrs.length) continue;
-        let used = 0;
-        for (let k=0; k<nbrs.length && used<MAX_LINKS_PER_NODE; k++){
-          const {j, type} = nbrs[k];
-          if (j <= i) continue; // не дублируем
-          if (FILTER_TYPE!=='any' && type!==FILTER_TYPE) continue;
-          const isHL = (i === highlightIdx) || (j === highlightIdx);
-          addEdge(i, j, isHL);
-          used++;
+        const degree=(ADJ[i]?.length||0);
+        sizes[i]=3.8+degree*2.0;
+      }
+      geoPoints.setAttribute('size',new THREE.BufferAttribute(sizes,1));
+      geoPoints.attributes.size.needsUpdate=true;
+    }
+
+    function rebuildLines(){
+      const P=[],C=[];
+      if(COUNT<2){P.push(0,0,0,0,0,0);C.push(1,1,1,1,1,1);}
+      else{
+        for(let i=0;i<COUNT;i++){
+          const nbrs=ADJ[i];
+          if(!nbrs||!nbrs.length)continue;
+          let used=0;
+          for(let k=0;k<nbrs.length&&used<MAX_LINKS_PER_NODE;k++){
+            const {j,type}=nbrs[k];
+            if(j<=i)continue;
+            if(FILTER_TYPE!=='any'&&type!==FILTER_TYPE)continue;
+            const ax=posArr[i*3],ay=posArr[i*3+1],az=posArr[i*3+2];
+            const bx=posArr[j*3],by=posArr[j*3+1],bz=posArr[j*3+2];
+            const d=Math.hypot(ax-bx,ay-by,az-bz);
+            const t=THREE.MathUtils.clamp(1-d/(R*1.2),0,1);
+            const col=blueGradient(0.6+0.4*t);
+            P.push(ax,ay,az,bx,by,bz);
+            C.push(col.r,col.g,col.b,col.r,col.g,col.b);
+            used++;
+          }
         }
       }
-
-      if (P.length===0){ P.push(0,0,0, 0,0,0); C.push(1,1,1, 1,1,1); }
       lineGeom.setPositions(P);
       lineGeom.setColors(C);
-      lineGeom.needsUpdate = true;
+      lineGeom.needsUpdate=true;
     }
 
-    // ==== MOTION (мягкое движение, без притяжения к курсору) ====
-    const GLOBAL_DAMPING = 0.7;
-    const MAX_SPEED = BASE_SPEED * 1.8;
-
+    const GLOBAL_DAMPING=0.7;
+    const MAX_SPEED=BASE_SPEED*1.8;
     function updatePositions(){
       for(let i=0;i<COUNT;i++){
         vel[i].multiplyScalar(GLOBAL_DAMPING);
-
-        let nx=posArr[i*3  ] + vel[i].x;
-        let ny=posArr[i*3+1] + vel[i].y;
-        let nz=posArr[i*3+2] + vel[i].z;
-
-        const dist2 = Math.hypot(nx,ny,nz);
-        if(dist2 > ALLOWED_RADIUS){
-          const f = ALLOWED_RADIUS / dist2;
+        let nx=posArr[i*3]+vel[i].x;
+        let ny=posArr[i*3+1]+vel[i].y;
+        let nz=posArr[i*3+2]+vel[i].z;
+        const dist2=Math.hypot(nx,ny,nz);
+        if(dist2>ALLOWED_RADIUS){
+          const f=ALLOWED_RADIUS/dist2;
           nx*=f; ny*=f; nz*=f;
           vel[i].multiplyScalar(-1);
         }
-
-        posArr[i*3  ]=nx;
-        posArr[i*3+1]=ny;
-        posArr[i*3+2]=nz;
-
-        const sp = Math.hypot(vel[i].x, vel[i].y, vel[i].z);
-        if (sp > MAX_SPEED){
-          const k = MAX_SPEED / sp;
+        posArr[i*3]=nx; posArr[i*3+1]=ny; posArr[i*3+2]=nz;
+        const sp=Math.hypot(vel[i].x,vel[i].y,vel[i].z);
+        if(sp>MAX_SPEED){
+          const k=MAX_SPEED/sp;
           vel[i].multiplyScalar(k);
         }
       }
-      geoPoints.attributes.position.needsUpdate = true;
+      geoPoints.attributes.position.needsUpdate=true;
     }
 
-    // ==== HOVER & CALLOUT ====
-    const tooltip = document.getElementById('tooltip');
-    const elId   = tooltip.querySelector('.id');
-    const elName = tooltip.querySelector('.name');
-    const elMeta = tooltip.querySelector('.meta');
-
-    const raycaster = new THREE.Raycaster();
-    raycaster.params.Points = { threshold: 10 }; // чувствительность
-
-    const mouseNDC = new THREE.Vector2();
-    let hoverIndex = -1;
-    let prevHoverIndex = -1;
-
-    function onPointerMove(e){
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    }
-    renderer.domElement.addEventListener('pointermove', onPointerMove);
-
-    function worldToScreen(x,y,z){
-      const v = new THREE.Vector3(x,y,z);
-      v.project(camera);
-      const rect = renderer.domElement.getBoundingClientRect();
-      return {
-        x: rect.left + (v.x + 1) / 2 * rect.width,
-        y: rect.top  + (-v.y + 1) / 2 * rect.height
-      };
-    }
-
-    function truncate(s,n){ return (s && s.length>n) ? s.slice(0,n-1)+'…' : (s||''); }
-
-    function showTooltip(i){
-      if (i < 0 || i >= COUNT) { hideTooltip(); return; }
-      const node = NODES[i];
-      elId.textContent = node?.id || '';
-      elName.textContent = node?.label || '';
-      const deg = (ADJ[i]?.length || 0);
-      elMeta.textContent = `Degree: ${deg}${node?.def ? " — " + truncate(node.def, 160) : ""}`;
-
-      const sx = posArr[i*3], sy = posArr[i*3+1], sz = posArr[i*3+2];
-      const p = worldToScreen(sx,sy,sz);
-      tooltip.style.left = p.x + 'px';
-      tooltip.style.top  = p.y + 'px';
-      tooltip.style.opacity = '1';
-    }
-    function hideTooltip(){ tooltip.style.opacity = '0'; }
-
-    function updateHover(){
-      if (COUNT === 0) { hideTooltip(); return; }
-      raycaster.setFromCamera(mouseNDC, camera);
-      const hits = raycaster.intersectObject(points, true);
-      if (hits && hits.length){
-        const idx = hits[0].index|0;
-        if (idx !== hoverIndex && idx < COUNT){
-          // снять подсветку со старой точки
-          if (prevHoverIndex !== -1) highlightPoint(prevHoverIndex, false);
-
-          hoverIndex = idx;
-          highlightPoint(hoverIndex, true);
-          prevHoverIndex = hoverIndex;
-
-          showTooltip(hoverIndex);
-          renderer.domElement.style.cursor = 'pointer';
-          rebuildLines(hoverIndex); // подсветить рёбра hovered-узла
-        } else {
-          // обновляем позицию тултипа, пока держим hover
-          showTooltip(hoverIndex);
-        }
-      } else {
-        hoverIndex = -1;
-        if (prevHoverIndex !== -1) {
-          highlightPoint(prevHoverIndex, false);
-          prevHoverIndex = -1;
-        }
-        hideTooltip();
-        renderer.domElement.style.cursor = 'default';
-        rebuildLines(-1); // вернуть обычные линии
-      }
-    }
-
-    // ==== GUI ====
-    // const gui = new GUI();
-     // const params = {
-    //   rotationSpeedY: 0.0005,
-    //   maxLinksPerNode: MAX_LINKS_PER_NODE,
-    //  linkType: FILTER_TYPE // any, is_a, associated
-   // };
-   // gui.add(params, 'rotationSpeedY', 0, 0.01, 0.0005).name('Turn speed Y');
-  //  gui.add(params, 'maxLinksPerNode', 1, 30, 1).name('Max links / node').onChange(v=>{ MAX_LINKS_PER_NODE = v|0; rebuildLines(hoverIndex); });
-  //  gui.add(params, 'linkType', ['any','is_a','associated']).name('Link type').onChange(v=>{ FILTER_TYPE = v; rebuildLines(hoverIndex); });
- //  gui.close(); 
-
-    // ==== ANIMATE ====
-
-    let rotationY = 0;
+    let rotationY=0;
     function animate(){
       updatePositions();
-      
-    	
-      // Линии перестраиваем только по событиям (hover/gui), поэтому здесь не вызываем rebuildLines()
-      updateHover();
-
-	
-const ROTATION_SPEED_Y = 0.0005;
-		rotationY += ROTATION_SPEED_Y; 
-		
-      group.rotation.y = rotationY;
-
+      rotationY+=0.0005;
+      group.rotation.y=rotationY;
       controls.update();
-      renderer.render(scene, camera);
+      renderer.render(scene,camera);
       requestAnimationFrame(animate);
     }
 
-    // ==== RESIZE ====
-    addEventListener('resize', ()=>{
-      camera.aspect = innerWidth/innerHeight;
+    addEventListener('resize',()=>{
+      camera.aspect=innerWidth/innerHeight;
       camera.updateProjectionMatrix();
-      renderer.setSize(innerWidth, innerHeight);
-      lineMat.resolution.set(innerWidth, innerHeight);
+      renderer.setSize(innerWidth,innerHeight);
+      lineMat.resolution.set(innerWidth,innerHeight);
     });
 
-    // ==== LOAD DATA & START ====
     async function loadData(){
-      const data = await (await fetch(DATA_URL)).json();
-      NODES = data.nodes || [];
-      EDGES_RAW = data.edges || [];
+      const data=await (await fetch(DATA_URL)).json();
+      NODES=data.nodes||[];
+      EDGES_RAW=data.edges||[];
       buildAdjacency();
-      spawnAll();   // мгновенно создаём все точки
+      spawnAll();
       animate();
     }
     loadData();
