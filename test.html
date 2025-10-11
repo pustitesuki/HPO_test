@@ -5,7 +5,7 @@
   <title>Circle Bezier Graph — auto highlight</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    html, body { margin:0; height:100%; background:#050505; }
+    html, body { margin:0; height:100%; background:transparent; }
     #wrap { width:100vw; height:100vh; display:grid; place-items:center; }
     svg { width: min(100vmin, 1400px); height: min(100vmin, 1400px); overflow:visible; }
 
@@ -14,7 +14,7 @@
     .edge.associated { stroke:#E86AD1; }
     .edge.other      { stroke:#7BDFA6; }
 
-    .node { fill:#050505; transition: fill .25s ease, r .25s ease, opacity .25s ease; }
+    .node { fill:#1B2638; transition: fill .25s ease, r .25s ease, opacity .25s ease; }
     .label { font: 8px/1.2 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; fill:#69B9FF; opacity:.9; user-select:none; transition: fill .25s ease, opacity .25s ease; }
 
     /* состояния для авто-подсветки */
@@ -35,7 +35,7 @@
 
 <script type="module">
   // ====== ПАРАМЕТРЫ ======
-  const DATA_URL        = 'hpo_graph.json';
+  const DATA_URL        = 'hpo_graph_b.json';
   const SIZE            = 1200;
   const CX              = SIZE/2, CY = SIZE/2;
   const R               = 480;
@@ -48,7 +48,7 @@
 
   // ====== ПАРАМЕТРЫ АНИМАЦИИ ПОДСВЕТКИ ======
   const HIGHLIGHT_COLOR = '#00D7FF';
-  const STEP_MS         = 1200;     // сколько держим один фокус
+  const STEP_MS         = 1800;     // сколько держим один фокус
   const GAP_MS          = 400;      // пауза между фокусами
   const DIM_OP          = 0.17;      // непрозрачность «остальных»
   const EDGE_BOOST      = 0.4;       // множитель толщины у подсвеченных ребёр
