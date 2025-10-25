@@ -50,10 +50,18 @@ container.appendChild(renderer.domElement);
     const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.01, 4000);
     camera.position.set(80, 200, 300);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.enableZoom = false;
-    controls.mouseButtons.WHEEL = null;
+   const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.enableZoom = false;
+controls.mouseButtons.WHEEL = null;
+
+// ---- запретить вращение на touch-устройствах ----
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+if (isTouch) {
+  controls.enableRotate = false;
+  controls.enablePan = false;
+  renderer.domElement.style.touchAction = 'auto'; // позволяет скроллить страницу
+}
 
     scene.add(new THREE.AmbientLight(0x8eb8ff, 0.10));
     const key = new THREE.DirectionalLight(0xffffff, 0.65);
