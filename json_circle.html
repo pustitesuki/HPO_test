@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Circle Bezier Graph — auto highlight</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body { margin:0; height:100%; background:transparent; }
+    #wrap { width:100vw; height:100vh; display:grid; place-items:center; }
+    svg { width: min(100vmin, 1400px); height: min(100vmin, 1400px); overflow:visible; }
+
+    .edge { fill:none; stroke:#00D7FF; stroke-opacity:.5; transition: stroke .05s ease, stroke-opacity .25s ease, opacity .25s ease, stroke-width .25s ease; }
+    .edge.is_a       { stroke:#BFF9FF; }
+    .edge.associated { stroke:#E86AD1; }
+    .edge.other      { stroke:#7BDFA6; }
+
+    .node { fill:#1B2638; transition: fill .25s ease, r .25s ease, opacity .25s ease; }
+    .label { font: 8px/1.2 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; fill:#BFF9FF; opacity:.9; user-select:none; transition: fill .25s ease, opacity .25s ease; }
+
+    /* состояния для авто-подсветки */
+    .dimmed   { opacity: var(--dim-op, .08); }
+    .hl-edge  { stroke-opacity: var(--hl-edge-op, .9) !important; }
+    .hl-node  { fill: var(--hl-color, #00D7FF) !important; }
+    .hl-label { fill: #00D7FF; opacity: 1; }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <svg id="svg" viewBox="0 0 1200 1200" aria-label="Circle Bezier Graph">
+    <g id="edges"></g>
+    <g id="nodes"></g>
+    <g id="labels"></g>
+  </svg>
+</div>
+
+<script type="module">
+  // ====== ПАРАМЕТРЫ ======
+  const DATA_URL        = 'hpo_graph_b.json';
+  const SIZE            = 1200;
+  const CX              = SIZE/2, CY = SIZE/2;
+  const R               = 360;
+  const CURVE_PULL      = 0.58;   // 0..1 — вогнутость Безье к центру
+  const EDGE_BASE_WIDTH = 1.3;
+  const EDGE_MAX_PER_NODE = 24;
+  const DOT_R           = 2.6;
+  const LABEL_OFFSET    = 18;
+  const LABEL_FONT_SIZE = 12;
+
+  // ====== ПАРАМЕТРЫ АНИМАЦИИ ПОДСВЕТКИ ======
+  const HIGHLIGHT_COLOR = '#00D7FF';
+  const STEP_MS         = 1800;     // сколько держим один фокус
+  const GAP_MS          = 400;      // пауза между фокусами
+  const DIM_OP          = 0.1;      // непрозрачность «остальных»
+  const EDGE_BOOST      = 0.6;       // множитель толщины у подсвеченных ребёр
+  const NODE_R_BOOST    = 1.6;       // множитель радиуса подсвеченного узла
+
+  // прокинем в CSS custom props
+  document.documentElement.style.setProperty('--dim-op', String(DIM_OP));
+  document.documentElement.style.setProperty('--hl-color', HIGHLIGHT_COLOR);
+  document.documentElement.style.setProperty('--hl-edge-op', '.92');
+
+  // ====== ВСПОМОГАТЕЛЬНОЕ ======
+  const svg = document.getElementById('svg');
+  const gEdges = document.getElementById('edges');
+  const gNodes = document.getElementById('nodes');
+  const gLabels = document.getElementById('labels');
+
+  const polarToXY = (ang, radius) => ({ x: CX + radius*Math.cos(ang), y: CY + radius*Math.sin(ang) });
+
+  function bezierPath(pA, pB, pull = CURVE_PULL) {
+    const c1 = { x: CX + (pA.x - CX)*pull, y: CY + (pA.y - CY)*pull };
+    const c2 = { x: CX + (pB.x - CX)*pull, y: CY + (pB.y - CY)*pull };
+    return `M ${pA.x},${pA.y} C ${c1.x},${c1.y} ${c2.x},${c2.y} ${pB.x},${pB.y}`;
+  }
+
+  function labelTransform(angleRad) {
+    let a = angleRad * 180 / Math.PI;
+    const flip = (a > 90 && a < 270);
+    const rotate = flip ? (a + 180) : a;
+    return { rotate, anchor: flip ? 'end' : 'start' };
+  }
+
+  function edgeClass(type) {
+    if (type === 'is_a') return 'edge is_a';
+    if (type === 'associated') return 'edge associated';
+    return 'edge other';
+  }
+
+  function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+  function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+
+  // ====== ОСНОВНАЯ ЗАГРУЗКА ======
+  const nodeElems = [];  // <circle>
+  const labelElems = []; // <text>
+  const edgeElems  = []; // {el:<path>, a, b, baseWidth}
+
+  const neighbors = new Map(); // i -> Set(indices)
+  const incidentEdges = new Map(); // i -> Array(edgeObjs)
+
+  async function main(){
+    const data = await (await fetch(DATA_URL)).json();
+    const NODES = data.nodes || [];
+    const EDGES = data.edges || [];
+    const N = NODES.length; if (!N) return;
+
+    // позиции + узлы/подписи
+    const pos = new Array(N);
+    for (let i=0;i<N;i++){
+      const theta = (-Math.PI/2) + i * (2*Math.PI / N);
+      pos[i] = polarToXY(theta, R);
+
+      const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('class','node');
+      c.setAttribute('cx', pos[i].x);
+      c.setAttribute('cy', pos[i].y);
+      c.setAttribute('r', DOT_R);
+      c.dataset.i = i;
+      gNodes.appendChild(c);
+      nodeElems[i] = c;
+
+      const outer = polarToXY(theta, R + LABEL_OFFSET);
+      const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('class','label');
+      t.setAttribute('x', outer.x);
+      t.setAttribute('y', outer.y);
+      t.setAttribute('font-size', LABEL_FONT_SIZE);
+      const { rotate, anchor } = labelTransform(theta);
+      t.setAttribute('text-anchor', anchor);
+      t.setAttribute('transform', `rotate(${rotate} ${outer.x} ${outer.y})`);
+      t.textContent = NODES[i].label || NODES[i].id || ('#'+i);
+      gLabels.appendChild(t);
+      labelElems[i] = t;
+    }
+
+    // индексы
+    const id2i = new Map();
+    NODES.forEach((n,i)=> id2i.set(n.id, i));
+
+    // степени
+    const deg = new Array(N).fill(0);
+    for (const e of EDGES){
+      const a = id2i.get(e.source), b = id2i.get(e.target);
+      if (a==null || b==null || a===b) continue;
+      deg[a]++; deg[b]++;
+    }
+
+    // ребра (отсортируем длинные вниз)
+    const prepared = [];
+    for (const e of EDGES){
+      const a = id2i.get(e.source), b = id2i.get(e.target);
+      if (a==null || b==null || a===b) continue;
+      if (deg[a] > EDGE_MAX_PER_NODE || deg[b] > EDGE_MAX_PER_NODE) continue;
+      const pA = pos[a], pB = pos[b];
+      const dx = pA.x - pB.x, dy = pA.y - pB.y;
+      const dist = Math.hypot(dx, dy);
+      prepared.push({ a,b, pA, pB, dist, type: e.type || 'associated' });
+      if(!neighbors.has(a)) neighbors.set(a,new Set());
+      if(!neighbors.has(b)) neighbors.set(b,new Set());
+      neighbors.get(a).add(b);
+      neighbors.get(b).add(a);
+    }
+    prepared.sort((u,v)=> v.dist - u.dist);
+
+    for (const r of prepared){
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('class', edgeClass(r.type));
+      path.setAttribute('d', bezierPath(r.pA, r.pB, CURVE_PULL));
+      const w = EDGE_BASE_WIDTH + 0.04 * Math.min(deg[r.a], deg[r.b]);
+      path.setAttribute('stroke-width', w.toFixed(2));
+      path.dataset.a = r.a;
+      path.dataset.b = r.b;
+      gEdges.appendChild(path);
+
+      const obj = { el: path, a: r.a, b: r.b, baseWidth: w };
+      edgeElems.push(obj);
+
+      if(!incidentEdges.has(r.a)) incidentEdges.set(r.a, []);
+      if(!incidentEdges.has(r.b)) incidentEdges.set(r.b, []);
+      incidentEdges.get(r.a).push(obj);
+      incidentEdges.get(r.b).push(obj);
+    }
+
+    // запуск авто-подсветки
+    cycleHighlights(N);
+  }
+
+  // ====== АВТО-ПОДСВЕТКА ======
+  function resetAll() {
+    // снять dim/hl
+    nodeElems.forEach(n => {
+      n.classList.remove('hl-node','dimmed');
+      n.setAttribute('r', String(DOT_R));
+      n.style.fill = ''; // сброс inline
+    });
+    labelElems.forEach(l => { l.classList.remove('hl-label','dimmed'); });
+    edgeElems.forEach(e => {
+      e.el.classList.remove('hl-edge','dimmed');
+      e.el.style.stroke = '';              // базовый цвет по классу
+      e.el.setAttribute('stroke-width', e.baseWidth.toFixed(2));
+    });
+  }
+
+  function dimAll() {
+    nodeElems.forEach(n => n.classList.add('dimmed'));
+    labelElems.forEach(l => l.classList.add('dimmed'));
+    edgeElems.forEach(e => e.el.classList.add('dimmed'));
+  }
+
+  function highlightNode(i) {
+    if (i==null || i<0 || i>=nodeElems.length) return;
+    const node = nodeElems[i];
+    const label = labelElems[i];
+
+    // выделяем узел/лейбл
+    node.classList.remove('dimmed');
+    node.classList.add('hl-node');
+    node.setAttribute('r', String(DOT_R * NODE_R_BOOST));
+    node.style.fill = HIGHLIGHT_COLOR;
+
+    label.classList.remove('dimmed');
+    label.classList.add('hl-label');
+
+    // ребра инцидентные — цвет и толщина
+    const inc = incidentEdges.get(i) || [];
+    for (const e of inc){
+      e.el.classList.remove('dimmed');
+      e.el.classList.add('hl-edge');
+      e.el.style.stroke = HIGHLIGHT_COLOR;
+      e.el.setAttribute('stroke-width', (e.baseWidth * EDGE_BOOST).toFixed(2));
+      // также снимем dim с соседнего узла и подписи
+      const j = (e.a===i) ? e.b : e.a;
+      nodeElems[j].classList.remove('dimmed');
+      labelElems[j].classList.remove('dimmed');
+    }
+  }
+
+  async function cycleHighlights(N) {
+    // сделаем случайный порядок обхода узлов, затем бесконечно
+    let order = shuffle([...Array(N).keys()]);
+    let p = 0;
+    while (true) {
+      const i = order[p++];
+      if (p >= order.length) { order = shuffle(order); p = 0; }
+
+      resetAll();
+      dimAll();
+      highlightNode(i);
+
+      await sleep(STEP_MS);
+      await sleep(GAP_MS);
+    }
+  }
+
+  // ====== GO ======
+  main();
+</script>
+</body>
+</html>
