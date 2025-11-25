@@ -1,0 +1,91 @@
+/* Figma Styles of your File */
+:root {
+  /* Colors */
+  --white: #ffffff;
+  --black: #000000;
+  --g1: linear-gradient(
+    214.07deg,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(239, 231, 231, 1) 100%
+  );
+  --foundation-royal-brown-royal-brown-50: #efe7e7;
+  --foundation-royal-brown-royal-brown-100: #ceb3b3;
+  --foundation-royal-brown-royal-brown-200: #b68e8f;
+  --foundation-royal-brown-royal-brown-300: #945b5c;
+  --foundation-royal-brown-royal-brown-400: #803b3c;
+  --foundation-royal-brown-royal-brown-500: #600b0b;
+  --foundation-royal-brown-royal-brown-600: #57090a;
+  --foundation-royal-brown-royal-brown-700: #440708;
+  --foundation-royal-brown-royal-brown-800: #350606;
+  --foundation-royal-brown-royal-brown-900: #280405;
+  --foundation-neutral-grey-neutral-grey-50: #ebebec;
+  --foundation-neutral-grey-neutral-grey-100: #c1c2c3;
+  --foundation-neutral-grey-neutral-grey-200: #a3a4a6;
+  --foundation-neutral-grey-neutral-grey-300: #7a7b7e;
+  --foundation-neutral-grey-neutral-grey-400: #606165;
+  --foundation-neutral-grey-neutral-grey-500: #333534;
+  --foundation-neutral-grey-neutral-grey-600: #333538;
+  --foundation-neutral-grey-neutral-grey-700: #28292c;
+  --foundation-neutral-grey-neutral-grey-800: #1f2022;
+  --foundation-neutral-grey-neutral-grey-900: #18181a;
+  --foundation-blue-blue-50: #eaf8fe;
+  --foundation-blue-blue-100: #bde8fc;
+  --foundation-blue-blue-200: #9dddfb;
+  --foundation-blue-blue-300: #70cef9;
+  --foundation-blue-blue-400: #54c5f8;
+  --foundation-blue-blue-500: #29b6f6;
+  --foundation-blue-blue-600: #25a6e0;
+  --foundation-blue-blue-700: #1d81af;
+  --foundation-blue-blue-800: #176487;
+  --foundation-blue-blue-900: #114c67;
+  --foundation-yellow-yellow-50: #fef8ec;
+  --foundation-yellow-yellow-100: #fce9c3;
+  --foundation-yellow-yellow-200: #fadea7;
+  --foundation-yellow-yellow-300: #f8cf7e;
+  --foundation-yellow-yellow-400: #f6c565;
+  --foundation-yellow-yellow-500: #f4b73f;
+  --foundation-yellow-yellow-600: #dea739;
+  --foundation-yellow-yellow-700: #ad822d;
+  --foundation-yellow-yellow-800: #866523;
+  --foundation-yellow-yellow-900: #664d1a;
+  --foundation-red-red-50: #fdeded;
+  --foundation-red-red-100: #f8c7c6;
+  --foundation-red-red-200: #f5abab;
+  --foundation-red-red-300: #f18584;
+  --foundation-red-red-400: #ee6d6d;
+  --foundation-red-red-500: #ea4948;
+  --foundation-red-red-600: #d54242;
+  --foundation-red-red-700: #a63433;
+  --foundation-red-red-800: #812828;
+  --foundation-red-red-900: #621f1e;
+  --foundation-green-green-50: #eef5f2;
+  --foundation-green-green-100: #c9e1d7;
+  --foundation-green-green-200: #afd2c3;
+  --foundation-green-green-300: #8abea8;
+  --foundation-green-green-400: #74b197;
+  --foundation-green-green-500: #519e7d;
+  --foundation-green-green-600: #4a9072;
+  --foundation-green-green-700: #3a7059;
+  --foundation-green-green-800: #2d5745;
+  --foundation-green-green-900: #224235;
+
+  /* Fonts */
+  /* Effects */
+  --shadow-box-shadow: 0px 15px 32px 0px rgba(58, 83, 101, 0.18),
+    0px 58px 58px 0px rgba(58, 83, 101, 0.16),
+    0px 131px 79px 0px rgba(58, 83, 101, 0.09),
+    0px 233px 93px 0px rgba(58, 83, 101, 0.03),
+    0px 365px 102px 0px rgba(58, 83, 101, 0);
+  --warm-box-shadow: 0px 15px 32px 0px rgba(110, 33, 33, 0.18),
+    0px 58px 58px 0px rgba(110, 33, 33, 0.16),
+    0px 131px 79px 0px rgba(110, 33, 33, 0.09),
+    0px 233px 93px 0px rgba(110, 33, 33, 0.03),
+    0px 365px 102px 0px rgba(110, 33, 33, 0.1);
+  --tabbar-box-shadow: 0px 4px 20px 0px rgba(42, 55, 71, 0.1);
+  --maroon-box-shadow: 0px 5px 10px 0px rgba(73, 3, 3, 0.78),
+    0px 19px 19px 0px rgba(73, 3, 3, 0.67),
+    0px 43px 26px 0px rgba(73, 3, 3, 0.4),
+    0px 76px 30px 0px rgba(73, 3, 3, 0.12),
+    0px 118px 33px 0px rgba(73, 3, 3, 0.01);
+}
+/* Figma Color Variables of your File */
