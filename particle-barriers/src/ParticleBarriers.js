@@ -118,6 +118,8 @@ export class ParticleBarriers {
     this.particleSystem.update(dt, time);
     this.trailSystem.update();
 
-    this.renderer.render(this.scene, this.camera);
+    if (!document.hidden) {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 }
