@@ -10,7 +10,6 @@ export const CONFIG = {
   colorCaptured: 0x107D9B,
   colorTrail: 0x01DDFF,
 
-  
   // Barriers
   barrierCount: 7,
   barrierCaptureZone: 20, // px, ± from center
@@ -28,7 +27,7 @@ export const CONFIG = {
   fadeDuration: 2000, // ms
 
   // Trails
-  trailLength: 110, // px
+  trailLength: 120, // px
   trailSegments: 10,
   trailOpacityHead: 0.6,
   trailOpacityTail: 0.0,
