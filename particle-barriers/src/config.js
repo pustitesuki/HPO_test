@@ -7,7 +7,7 @@ export const CONFIG = {
 
   // Colors
   colorFlying: 0x063D57,
-  colorCaptured: 0x01DDFF,
+  colorCaptured: 0x1B3048,
   colorTrail: 0x01DDFF,
 
   // Barriers
