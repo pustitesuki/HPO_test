@@ -6,8 +6,8 @@ export const CONFIG = {
   baseSpeed: 3, // units/frame — tune to achieve 4-6s full traversal
 
   // Colors
-  colorFlying: 0x1B3048,
-  colorCaptured: 0x107D9B,
+  colorFlying: 0x063D57,
+  colorCaptured: 0xFFFFFF,
   colorTrail: 0x01DDFF,
 
   // Barriers
@@ -27,7 +27,7 @@ export const CONFIG = {
   fadeDuration: 2000, // ms
 
   // Trails
-  trailLength: 120, // px
+  trailLength: 150, // px
   trailSegments: 10,
   trailOpacityHead: 0.6,
   trailOpacityTail: 0.0,
