@@ -6,7 +6,7 @@
 <title>GTS — Loss Landscape</title>
 <style>
 * { margin: 0; padding: 0; }
-body { background: none; overflow: hidden; }
+body { background: #191919; overflow: hidden; }
 canvas { display: block; background: transparent; }
 </style>
 </head>
@@ -14,7 +14,6 @@ canvas { display: block; background: transparent; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-<!-- Main points shader -->
 <script id="vs" type="x-shader/x-vertex">
   uniform float pointSize;
   uniform vec3 focusPos;
@@ -63,7 +62,7 @@ canvas { display: block; background: transparent; }
 <script>
 (() => {
   // ═══════════════════════════════════════════════════════
-  //  CONFIG
+  //  POINTS CONFIG
   // ═══════════════════════════════════════════════════════
   const POINT_SIZE       = 0.7;
   const RING_OUTER       = 15.0;
@@ -77,23 +76,42 @@ canvas { display: block; background: transparent; }
 
   // Chaos / order
   const CHAOS_AMPLITUDE  = 2.5;
-  const ORDER_RADIUS     = 4.0;
+  const ORDER_RADIUS     = 3.0;
   const CHAOS_SPEED      = 1.5;
 
   // Orbit
-  const ORBIT_SPEED      = 0.4;
+  const ORBIT_SPEED      = 0.8;
   const ORBIT_RADIUS     = (RING_OUTER + RING_INNER) / 2;
 
   // Trail ghosts
-  const TRAIL_FRAMES     = 5;     // how many past frames to show
-  const TRAIL_DECAY      = 0.55;  // opacity multiplier per ghost layer (0..1)
+  const TRAIL_FRAMES     = 5;
+  const TRAIL_DECAY      = 0.55;
+
+  // ═══════════════════════════════════════════════════════
+  //  BÉZIER CONNECTIONS CONFIG
+  // ═══════════════════════════════════════════════════════
+  const BEZIER_MAX_CONNECTIONS  = 50;     // max simultaneous curves on screen
+  const BEZIER_MAX_DISTANCE     = 25.0;   // max distance between connected points (large = cross-ring)
+  const BEZIER_MIN_DISTANCE     = 3.0;    // min distance to avoid trivial short links
+  const BEZIER_LIFETIME_MIN     = 1.5;    // min lifetime in seconds
+  const BEZIER_LIFETIME_MAX     = 4.0;    // max lifetime in seconds
+  const BEZIER_SPAWN_RATE       = 3;      // new connections attempted per frame
+  const BEZIER_SPAWN_INTERVAL   = 3;      // spawn every N frames (throttle)
+  const BEZIER_CURVATURE        = 3.0;    // control point height (arch)
+  const BEZIER_CURVATURE_RAND   = 2.0;    // random curvature variation
+  const BEZIER_SEGMENTS         = 28;     // curve smoothness
+  const BEZIER_COLOR_NEAR       = [0.0, 0.843, 1.0];   // #00D7FF — curve color near focus
+  const BEZIER_COLOR_FAR        = [0.05, 0.14, 0.22];   // dim color far from focus
+  const BEZIER_OPACITY_MAX      = 0.7;    // peak opacity
+  const BEZIER_FADE_IN          = 0.15;   // portion of lifetime for fade-in
+  const BEZIER_FADE_OUT         = 0.35;   // portion of lifetime for fade-out
   // ═══════════════════════════════════════════════════════
 
-  // ─── Renderer: transparent background ──────────────────
+  // Renderer: transparent
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(innerWidth, innerHeight);
   renderer.setPixelRatio(devicePixelRatio);
-  renderer.setClearColor(0x000000, 0);  // fully transparent
+  renderer.setClearColor(0x000000, 0);
   document.body.appendChild(renderer.domElement);
 
   const scene  = new THREE.Scene();
@@ -152,66 +170,51 @@ canvas { display: block; background: transparent; }
     rndFreqY[i]  = (0.5 + Math.random() * 1.5) * CHAOS_SPEED * 0.7;
   }
 
-  // ─── Create main + ghost layers ────────────────────────
-  // Ghost layers store past positions for trail effect
-  const layers = [];  // index 0 = current, 1..N = ghosts (oldest last)
-
-  function makeSharedUniforms() {
+  // ─── Point layers (current + ghost trails) ─────────────
+  function makeUniforms(opMult, ptSize) {
     return {
-      pointSize: { value: POINT_SIZE },
-      focusPos:  { value: new THREE.Vector3(0, 0, 0) },
-      maxDist:   { value: COLOR_MAX_DIST },
-      colorNear: { value: new THREE.Vector3(...COLOR_NEAR) },
-      colorFar:  { value: new THREE.Vector3(...COLOR_FAR) },
-      opacityMult: { value: 1.0 },
+      pointSize:   { value: ptSize },
+      focusPos:    { value: new THREE.Vector3() },
+      maxDist:     { value: COLOR_MAX_DIST },
+      colorNear:   { value: new THREE.Vector3(...COLOR_NEAR) },
+      colorFar:    { value: new THREE.Vector3(...COLOR_FAR) },
+      opacityMult: { value: opMult },
     };
   }
 
-  for (let layer = 0; layer <= TRAIL_FRAMES; layer++) {
-    const positions = new Float32Array(total * 3);
-    // init to base positions
+  const layers = [];
+  for (let g = 0; g <= TRAIL_FRAMES; g++) {
+    const pos = new Float32Array(total * 3);
     for (let i = 0; i < total; i++) {
-      positions[i*3]   = baseX[i];
-      positions[i*3+1] = baseY[i];
-      positions[i*3+2] = baseZ[i];
+      pos[i*3] = baseX[i]; pos[i*3+1] = baseY[i]; pos[i*3+2] = baseZ[i];
     }
-
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
 
-    const u = makeSharedUniforms();
-    // ghost layers get decreasing opacity
-    const opacity = layer === 0 ? 1.0 : Math.pow(TRAIL_DECAY, layer);
-    u.opacityMult.value = opacity;
-    // ghost points slightly smaller
-    u.pointSize.value = layer === 0 ? POINT_SIZE : POINT_SIZE * (0.7 + 0.3 * Math.pow(TRAIL_DECAY, layer));
+    const op  = g === 0 ? 1.0 : Math.pow(TRAIL_DECAY, g);
+    const ps  = g === 0 ? POINT_SIZE : POINT_SIZE * (0.7 + 0.3 * Math.pow(TRAIL_DECAY, g));
+    const u   = makeUniforms(op, ps);
 
     const mat = new THREE.ShaderMaterial({
       uniforms: u,
       vertexShader:   document.getElementById('vs').textContent,
       fragmentShader: document.getElementById('fs').textContent,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false,
+      transparent: true, depthTest: false, depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
 
-    const points = new THREE.Points(geo, mat);
-    // render ghosts first (behind current)
-    points.renderOrder = layer === 0 ? 100 : (TRAIL_FRAMES - layer);
-    scene.add(points);
-
-    layers.push({ geo, positions, uniforms: u, points });
+    const pts = new THREE.Points(geo, mat);
+    pts.renderOrder = g === 0 ? 100 : (TRAIL_FRAMES - g);
+    scene.add(pts);
+    layers.push({ geo, positions: pos, uniforms: u });
   }
 
-  // ─── Compute current positions ─────────────────────────
-  function computePositions(t, focusX, focusZ, outArr) {
+  // ─── Compute positions ─────────────────────────────────
+  function computePositions(t, focusX, focusZ, out) {
     for (let i = 0; i < total; i++) {
       const bx = baseX[i], by = baseY[i], bz = baseZ[i];
-      const dx = bx - focusX;
-      const dz = bz - focusZ;
+      const dx = bx - focusX, dz = bz - focusZ;
       const dist = Math.sqrt(dx*dx + dz*dz);
-
       const raw = Math.max(0, (dist - ORDER_RADIUS * 0.25) / (ORDER_RADIUS * 0.75));
       const cf = Math.min(1, raw * raw);
 
@@ -221,26 +224,121 @@ canvas { display: block; background: transparent; }
                + Math.cos(t * rndFreqZ[i] * 1.3 + rndPhaseX[i]) * rndAmpZ[i] * 0.3;
       const jy = Math.sin(t * rndFreqY[i] + rndPhaseY[i]) * rndAmpY[i];
 
-      outArr[i*3]   = bx + jx * cf;
-      outArr[i*3+1] = by + jy * cf;
-      outArr[i*3+2] = bz + jz * cf;
+      out[i*3]   = bx + jx * cf;
+      out[i*3+1] = by + jy * cf;
+      out[i*3+2] = bz + jz * cf;
     }
+  }
+
+  // ─── Bézier Connection System ──────────────────────────
+  const connections = [];
+
+  const cNear = new THREE.Color(...BEZIER_COLOR_NEAR);
+  const cFar  = new THREE.Color(...BEZIER_COLOR_FAR);
+
+  function cubicBez(a, b, c, d, t) {
+    const it = 1 - t;
+    return it*it*it*a + 3*it*it*t*b + 3*it*t*t*c + t*t*t*d;
+  }
+
+  function spawnConnection(positions) {
+    const idxA = Math.floor(Math.random() * total);
+    let idxB = Math.floor(Math.random() * total);
+    if (idxB === idxA) return null;
+
+    const ax = positions[idxA*3], ay = positions[idxA*3+1], az = positions[idxA*3+2];
+    const bx = positions[idxB*3], by = positions[idxB*3+1], bz = positions[idxB*3+2];
+
+    const ddx = bx-ax, ddy = by-ay, ddz = bz-az;
+    const dist = Math.sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
+    if (dist < BEZIER_MIN_DISTANCE || dist > BEZIER_MAX_DISTANCE) return null;
+
+    // midpoint
+    const mx = (ax+bx)*0.5, my = (ay+by)*0.5, mz = (az+bz)*0.5;
+
+    // curvature
+    const curv = BEZIER_CURVATURE + (Math.random()-0.5) * BEZIER_CURVATURE_RAND * 2;
+    const lateral = (Math.random()-0.5) * 2.5;
+
+    // perpendicular on XZ
+    const len = Math.sqrt(ddx*ddx + ddz*ddz) || 1;
+    const px = -ddz/len, pz = ddx/len;
+
+    const cp1x = mx + px*lateral*0.5 - ddx*0.15;
+    const cp1y = my + curv;
+    const cp1z = mz + pz*lateral*0.5 - ddz*0.15;
+    const cp2x = mx + px*lateral*0.5 + ddx*0.15;
+    const cp2y = my + curv * 0.8;
+    const cp2z = mz + pz*lateral*0.5 + ddz*0.15;
+
+    const verts = new Float32Array((BEZIER_SEGMENTS+1)*3);
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0x00D7FF,
+      transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthTest: false, depthWrite: false,
+    });
+
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.renderOrder = 50;
+    scene.add(line);
+
+    const lifetime = BEZIER_LIFETIME_MIN + Math.random() * (BEZIER_LIFETIME_MAX - BEZIER_LIFETIME_MIN);
+
+    return {
+      line, geo: lineGeo, mat: lineMat, verts,
+      idxA, idxB,
+      cp1x, cp1y, cp1z, cp2x, cp2y, cp2z,
+      age: 0, lifetime,
+    };
+  }
+
+  function updateConnection(conn, positions, focusX, focusZ) {
+    const ax = positions[conn.idxA*3], ay = positions[conn.idxA*3+1], az = positions[conn.idxA*3+2];
+    const bx = positions[conn.idxB*3], by = positions[conn.idxB*3+1], bz = positions[conn.idxB*3+2];
+
+    const v = conn.verts;
+    for (let s = 0; s <= BEZIER_SEGMENTS; s++) {
+      const t = s / BEZIER_SEGMENTS;
+      v[s*3]   = cubicBez(ax, conn.cp1x, conn.cp2x, bx, t);
+      v[s*3+1] = cubicBez(ay, conn.cp1y, conn.cp2y, by, t);
+      v[s*3+2] = cubicBez(az, conn.cp1z, conn.cp2z, bz, t);
+    }
+    conn.geo.attributes.position.needsUpdate = true;
+
+    // color: blend based on midpoint distance to focus
+    const mx = (ax+bx)*0.5, mz = (az+bz)*0.5;
+    const df = Math.sqrt((mx-focusX)**2 + (mz-focusZ)**2);
+    const ct = Math.min(1, df / COLOR_MAX_DIST);
+    const col = cNear.clone().lerp(cFar, Math.pow(ct, 0.6));
+    conn.mat.color = col;
+  }
+
+  function removeConnection(conn) {
+    scene.remove(conn.line);
+    conn.geo.dispose();
+    conn.mat.dispose();
   }
 
   // ─── Animate ───────────────────────────────────────────
   let t = 0;
   let frameCount = 0;
+  let lastTime = performance.now();
 
   function animate() {
     requestAnimationFrame(animate);
+    const now = performance.now();
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
     t += 0.006;
     frameCount++;
 
     // Camera
     camera.position.set(
-      Math.sin(t * 0.1) * 1.0,
-      CAM_HEIGHT,
-      Math.cos(t * 0.1) * 1.0
+      Math.sin(t * 0.1) * 1.0, CAM_HEIGHT, Math.cos(t * 0.1) * 1.0
     );
     camera.lookAt(0, 0, 0);
 
@@ -250,23 +348,58 @@ canvas { display: block; background: transparent; }
     const focusZ = Math.sin(orbitAngle) * ORBIT_RADIUS;
     const focusY = lossFunc(focusX * 0.45, focusZ * 0.45) * HEIGHT_SCALE;
 
-    // ── Shift ghost layers: copy layer N-1 → layer N ──
-    // Every 2nd frame to spread out the trail
+    // Ghost shift
     if (frameCount % 2 === 0) {
       for (let g = TRAIL_FRAMES; g >= 1; g--) {
-        const src = g - 1;
-        layers[g].positions.set(layers[src].positions);
+        layers[g].positions.set(layers[g-1].positions);
         layers[g].geo.attributes.position.needsUpdate = true;
       }
     }
 
-    // ── Compute current frame positions ──
+    // Current positions
     computePositions(t, focusX, focusZ, layers[0].positions);
     layers[0].geo.attributes.position.needsUpdate = true;
 
-    // ── Update focus uniform on all layers ──
+    // Update focus uniform
     for (let l = 0; l <= TRAIL_FRAMES; l++) {
       layers[l].uniforms.focusPos.value.set(focusX, focusY, focusZ);
+    }
+
+    const curPos = layers[0].positions;
+
+    // ── Update Bézier connections ──
+    for (let c = connections.length - 1; c >= 0; c--) {
+      const conn = connections[c];
+      conn.age += dt;
+
+      if (conn.age >= conn.lifetime) {
+        removeConnection(conn);
+        connections.splice(c, 1);
+        continue;
+      }
+
+      // fade in/out
+      const lt = conn.age / conn.lifetime;
+      let opacity;
+      if (lt < BEZIER_FADE_IN) {
+        opacity = (lt / BEZIER_FADE_IN) * BEZIER_OPACITY_MAX;
+      } else if (lt > 1.0 - BEZIER_FADE_OUT) {
+        opacity = ((1.0 - lt) / BEZIER_FADE_OUT) * BEZIER_OPACITY_MAX;
+      } else {
+        opacity = BEZIER_OPACITY_MAX;
+      }
+      conn.mat.opacity = opacity;
+
+      updateConnection(conn, curPos, focusX, focusZ);
+    }
+
+    // ── Spawn new connections ──
+    if (frameCount % BEZIER_SPAWN_INTERVAL === 0) {
+      for (let a = 0; a < BEZIER_SPAWN_RATE; a++) {
+        if (connections.length >= BEZIER_MAX_CONNECTIONS) break;
+        const conn = spawnConnection(curPos);
+        if (conn) connections.push(conn);
+      }
     }
 
     renderer.render(scene, camera);
