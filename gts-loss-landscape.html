@@ -6,7 +6,7 @@
 <title>GTS — Loss Landscape</title>
 <style>
 * { margin: 0; padding: 0; }
-body { overflow: hidden; cursor: crosshair; }
+body { background: #000; overflow: hidden; }
 canvas { display: block; }
 </style>
 </head>
@@ -16,20 +16,19 @@ canvas { display: block; }
 
 <script id="vs" type="x-shader/x-vertex">
   uniform float pointSize;
-  uniform vec3 spherePos;
+  uniform vec3 focusPos;
   uniform float maxDist;
 
-  varying float vDistToSphere;
+  varying float vDistToFocus;
 
   void main() {
-    float dx = position.x - spherePos.x;
-    float dz = position.z - spherePos.z;
+    float dx = position.x - focusPos.x;
+    float dz = position.z - focusPos.z;
     float dist = sqrt(dx * dx + dz * dz);
-    vDistToSphere = clamp(dist / maxDist, 0.0, 1.0);
+    vDistToFocus = clamp(dist / maxDist, 0.0, 1.0);
 
     vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-    // points slightly bigger near sphere
-    float sizeMult = mix(1.3, 0.8, vDistToSphere);
+    float sizeMult = mix(1.4, 0.75, vDistToFocus);
     gl_PointSize = pointSize * sizeMult * (300.0 / -mvPos.z);
     gl_Position = projectionMatrix * mvPos;
   }
@@ -39,18 +38,17 @@ canvas { display: block; }
   uniform vec3 colorNear;
   uniform vec3 colorFar;
 
-  varying float vDistToSphere;
+  varying float vDistToFocus;
 
   void main() {
     float d = length(gl_PointCoord - 0.5);
     if (d > 0.5) discard;
     float alpha = smoothstep(0.5, 0.08, d);
 
-    float t = pow(vDistToSphere, 0.6);
+    float t = pow(vDistToFocus, 0.55);
     vec3 col = mix(colorNear, colorFar, t);
 
-    // brighter core near sphere
-    float glow = (1.0 - vDistToSphere) * 0.12;
+    float glow = (1.0 - vDistToFocus) * 0.15;
     col += glow;
 
     gl_FragColor = vec4(col, alpha * 0.55);
@@ -62,27 +60,32 @@ canvas { display: block; }
   // ═══════════════════════════════════════════════════════
   //  CONFIG
   // ═══════════════════════════════════════════════════════
-  const POINT_SIZE       = 0.3;
-  const TERRAIN_SIZE     = 32;
-  const GRID             = 160;
-  const DEFORM_RADIUS    = 5.0;
-  const DEFORM_DEPTH     = 3.5;
-  const FOLLOW_SPEED     = 0.045;
+  const POINT_SIZE       = 0.7;
+  const RING_OUTER       = 15.0;   // outer radius of the ring
+  const RING_INNER       = 8.0;    // inner radius (hole)
+  const RING_POINTS      = 12000;  // total points in the ring
   const COLOR_NEAR       = [0.0, 0.843, 1.0];     // #00D7FF
   const COLOR_FAR        = [0.075, 0.188, 0.271];  // #133045
-  const COLOR_MAX_DIST   = 18.0;
-  const CAM_HEIGHT       = 38;
+  const COLOR_MAX_DIST   = 14.0;
+  const CAM_HEIGHT       = 42;
 
   // Chaos / order
-  const CHAOS_AMPLITUDE  = 1.8;   // max random displacement far from cursor
-  const ORDER_RADIUS     = 3.0;   // radius within which points snap to grid
-  const CHAOS_SPEED      = 1.5;   // how fast points jitter
+  const CHAOS_AMPLITUDE  = 2.5;
+  const ORDER_RADIUS     = 3.0;
+  const CHAOS_SPEED      = 1.5;
+
+  // Orbit of order zone
+  const ORBIT_SPEED      = 0.8;    // radians per second (speed along ring)
+  const ORBIT_RADIUS     = (RING_OUTER + RING_INNER) / 2; // center of ring band
+
+  // Terrain height
+  const HEIGHT_SCALE     = 5.0;
 
   // Trail fade
-  const TRAIL_ALPHA      = 0.88;  // 0..1, higher = longer trails
+  const TRAIL_ALPHA      = 0.88;
   // ═══════════════════════════════════════════════════════
 
-  // ─── Renderer with NO autoclear (for trails) ──────────
+  // Renderer — no autoclear for trails
   const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
   renderer.setSize(innerWidth, innerHeight);
   renderer.setPixelRatio(devicePixelRatio);
@@ -90,25 +93,22 @@ canvas { display: block; }
   renderer.autoClear = false;
   document.body.appendChild(renderer.domElement);
 
-  // ─── Fade-out fullscreen quad (draws semi-transparent black over previous frame) ──
-  const fadeScene  = new THREE.Scene();
-  const fadeCam    = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const fadeGeo    = new THREE.PlaneGeometry(2, 2);
-  const fadeMat    = new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 1.0 - TRAIL_ALPHA,
-    depthTest: false,
+  // Fade quad
+  const fadeScene = new THREE.Scene();
+  const fadeCam   = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const fadeMat   = new THREE.MeshBasicMaterial({
+    color: 0x000000, transparent: true,
+    opacity: 1.0 - TRAIL_ALPHA, depthTest: false,
   });
-  fadeScene.add(new THREE.Mesh(fadeGeo, fadeMat));
+  fadeScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fadeMat));
 
-  // ─── Main scene ────────────────────────────────────────
+  // Main scene
   const scene  = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1, 200);
   camera.position.set(0, CAM_HEIGHT, 0);
   camera.lookAt(0, 0, 0);
 
-  // ─── Loss function ─────────────────────────────────────
+  // ─── Loss function (for height variation) ──────────────
   function lossFunc(x, z) {
     const g  = 0.6  * Math.exp(-0.15 * ((x-2)**2 + (z-1)**2));
     const l1 = 0.35 * Math.exp(-0.20 * ((x+3)**2 + (z+2)**2));
@@ -120,17 +120,13 @@ canvas { display: block; }
     return -(g + l1 + l2 + l3) + s + b * 0.6;
   }
 
-  // ─── Point cloud ───────────────────────────────────────
-  const total = GRID * GRID;
-  const half  = TERRAIN_SIZE / 2;
-  const step  = TERRAIN_SIZE / (GRID - 1);
-
+  // ─── Distribute points in a ring ───────────────────────
+  const total = RING_POINTS;
   const posArr = new Float32Array(total * 3);
   const baseX  = new Float32Array(total);
   const baseY  = new Float32Array(total);
   const baseZ  = new Float32Array(total);
 
-  // Per-point random seeds for chaotic motion
   const rndPhaseX = new Float32Array(total);
   const rndPhaseZ = new Float32Array(total);
   const rndPhaseY = new Float32Array(total);
@@ -141,32 +137,36 @@ canvas { display: block; }
   const rndFreqZ  = new Float32Array(total);
   const rndFreqY  = new Float32Array(total);
 
-  for (let iz = 0; iz < GRID; iz++) {
-    for (let ix = 0; ix < GRID; ix++) {
-      const i = iz * GRID + ix;
-      const x = -half + ix * step;
-      const z = -half + iz * step;
-      const y = lossFunc(x * 0.65, z * 0.65) * 6;
+  for (let i = 0; i < total; i++) {
+    // uniform distribution in a ring: rejection-free via sqrt
+    const angle = Math.random() * Math.PI * 2;
+    // uniform area distribution between inner and outer radius
+    const r = Math.sqrt(
+      RING_INNER * RING_INNER +
+      Math.random() * (RING_OUTER * RING_OUTER - RING_INNER * RING_INNER)
+    );
 
-      baseX[i] = x;
-      baseY[i] = y;
-      baseZ[i] = z;
+    const x = Math.cos(angle) * r;
+    const z = Math.sin(angle) * r;
+    const y = lossFunc(x * 0.45, z * 0.45) * HEIGHT_SCALE;
 
-      posArr[i*3]   = x;
-      posArr[i*3+1] = y;
-      posArr[i*3+2] = z;
+    baseX[i] = x;
+    baseY[i] = y;
+    baseZ[i] = z;
 
-      // unique chaotic motion per point
-      rndPhaseX[i] = Math.random() * Math.PI * 2;
-      rndPhaseZ[i] = Math.random() * Math.PI * 2;
-      rndPhaseY[i] = Math.random() * Math.PI * 2;
-      rndAmpX[i]   = (0.4 + Math.random() * 0.6) * CHAOS_AMPLITUDE;
-      rndAmpZ[i]   = (0.4 + Math.random() * 0.6) * CHAOS_AMPLITUDE;
-      rndAmpY[i]   = (0.3 + Math.random() * 0.7) * CHAOS_AMPLITUDE * 0.5;
-      rndFreqX[i]  = (0.5 + Math.random() * 1.5) * CHAOS_SPEED;
-      rndFreqZ[i]  = (0.5 + Math.random() * 1.5) * CHAOS_SPEED;
-      rndFreqY[i]  = (0.5 + Math.random() * 1.5) * CHAOS_SPEED * 0.7;
-    }
+    posArr[i*3]   = x;
+    posArr[i*3+1] = y;
+    posArr[i*3+2] = z;
+
+    rndPhaseX[i] = Math.random() * Math.PI * 2;
+    rndPhaseZ[i] = Math.random() * Math.PI * 2;
+    rndPhaseY[i] = Math.random() * Math.PI * 2;
+    rndAmpX[i]   = (0.4 + Math.random() * 0.6) * CHAOS_AMPLITUDE;
+    rndAmpZ[i]   = (0.4 + Math.random() * 0.6) * CHAOS_AMPLITUDE;
+    rndAmpY[i]   = (0.3 + Math.random() * 0.7) * CHAOS_AMPLITUDE * 0.5;
+    rndFreqX[i]  = (0.5 + Math.random() * 1.5) * CHAOS_SPEED;
+    rndFreqZ[i]  = (0.5 + Math.random() * 1.5) * CHAOS_SPEED;
+    rndFreqY[i]  = (0.5 + Math.random() * 1.5) * CHAOS_SPEED * 0.7;
   }
 
   const geo = new THREE.BufferGeometry();
@@ -174,7 +174,7 @@ canvas { display: block; }
 
   const uniforms = {
     pointSize: { value: POINT_SIZE },
-    spherePos: { value: new THREE.Vector3(0, 0, 0) },
+    focusPos:  { value: new THREE.Vector3(0, 0, 0) },
     maxDist:   { value: COLOR_MAX_DIST },
     colorNear: { value: new THREE.Vector3(...COLOR_NEAR) },
     colorFar:  { value: new THREE.Vector3(...COLOR_FAR) },
@@ -193,24 +193,6 @@ canvas { display: block; }
   const cloud = new THREE.Points(geo, material);
   scene.add(cloud);
 
-  // ─── Mouse raycasting ──────────────────────────────────
-  const raycaster = new THREE.Raycaster();
-  const mouse     = new THREE.Vector2(9999, 9999);
-  const rayPlane  = new THREE.Mesh(
-    new THREE.PlaneGeometry(TERRAIN_SIZE * 3, TERRAIN_SIZE * 3),
-    new THREE.MeshBasicMaterial({ visible: false })
-  );
-  rayPlane.rotation.x = -Math.PI / 2;
-  scene.add(rayPlane);
-
-  const targetXZ  = new THREE.Vector2(0, 0);
-  const currentXZ = new THREE.Vector2(0, 0);
-
-  document.addEventListener('mousemove', e => {
-    mouse.x =  (e.clientX / innerWidth)  * 2 - 1;
-    mouse.y = -(e.clientY / innerHeight) * 2 + 1;
-  });
-
   // ─── Animate ───────────────────────────────────────────
   let t = 0;
 
@@ -220,34 +202,21 @@ canvas { display: block; }
 
     // Camera: top-down with subtle drift
     camera.position.set(
-      Math.sin(t * 0.12) * 1.2,
+      Math.sin(t * 0.1) * 1.0,
       CAM_HEIGHT,
-      Math.cos(t * 0.12) * 1.2
+      Math.cos(t * 0.1) * 1.0
     );
     camera.lookAt(0, 0, 0);
 
-    // Raycast
-    raycaster.setFromCamera(mouse, camera);
-    const hits = raycaster.intersectObject(rayPlane);
-    if (hits.length && mouse.x < 9000) {
-      const p = hits[0].point;
-      targetXZ.set(
-        Math.max(-half+1, Math.min(half-1, p.x)),
-        Math.max(-half+1, Math.min(half-1, p.z))
-      );
-    }
+    // ── Order zone orbits along the ring ──
+    const orbitAngle = t * ORBIT_SPEED;
+    const focusX = Math.cos(orbitAngle) * ORBIT_RADIUS;
+    const focusZ = Math.sin(orbitAngle) * ORBIT_RADIUS;
+    const focusY = lossFunc(focusX * 0.45, focusZ * 0.45) * HEIGHT_SCALE;
 
-    currentXZ.x += (targetXZ.x - currentXZ.x) * FOLLOW_SPEED;
-    currentXZ.y += (targetXZ.y - currentXZ.y) * FOLLOW_SPEED;
+    uniforms.focusPos.value.set(focusX, focusY, focusZ);
 
-    const sx = currentXZ.x;
-    const sz = currentXZ.y;
-
-    // Update uniform for shader color
-    const surfY = lossFunc(sx * 0.65, sz * 0.65) * 6;
-    uniforms.spherePos.value.set(sx, surfY, sz);
-
-    // ── Per-point: chaos far, order near ──
+    // ── Per-point chaos/order ──
     const positions = geo.attributes.position.array;
 
     for (let i = 0; i < total; i++) {
@@ -255,41 +224,29 @@ canvas { display: block; }
       const by = baseY[i];
       const bz = baseZ[i];
 
-      // distance to cursor on XZ
-      const dx = bx - sx;
-      const dz = bz - sz;
+      const dx = bx - focusX;
+      const dz = bz - focusZ;
       const dist = Math.sqrt(dx*dx + dz*dz);
 
-      // chaos factor: 0 at cursor center, 1 far away
-      const chaos = Math.min(1.0, Math.max(0.0, (dist - ORDER_RADIUS * 0.3) / (ORDER_RADIUS * 0.7)));
-      // smooth it
-      const chaosFactor = chaos * chaos; // ease-in for snappy snap-to-grid
+      // chaos: 0 near focus, 1 far
+      const raw = Math.max(0, (dist - ORDER_RADIUS * 0.25) / (ORDER_RADIUS * 0.75));
+      const chaosFactor = Math.min(1, raw * raw);
 
-      // chaotic displacement
-      const jitterX = Math.sin(t * rndFreqX[i] + rndPhaseX[i]) * rndAmpX[i]
-                     + Math.sin(t * rndFreqX[i] * 1.7 + rndPhaseZ[i]) * rndAmpX[i] * 0.3;
-      const jitterZ = Math.cos(t * rndFreqZ[i] + rndPhaseZ[i]) * rndAmpZ[i]
-                     + Math.cos(t * rndFreqZ[i] * 1.3 + rndPhaseX[i]) * rndAmpZ[i] * 0.3;
-      const jitterY = Math.sin(t * rndFreqY[i] + rndPhaseY[i]) * rndAmpY[i];
+      // jitter
+      const jx = Math.sin(t * rndFreqX[i] + rndPhaseX[i]) * rndAmpX[i]
+               + Math.sin(t * rndFreqX[i] * 1.7 + rndPhaseZ[i]) * rndAmpX[i] * 0.3;
+      const jz = Math.cos(t * rndFreqZ[i] + rndPhaseZ[i]) * rndAmpZ[i]
+               + Math.cos(t * rndFreqZ[i] * 1.3 + rndPhaseX[i]) * rndAmpZ[i] * 0.3;
+      const jy = Math.sin(t * rndFreqY[i] + rndPhaseY[i]) * rndAmpY[i];
 
-      // deform (weight depression near cursor)
-      let deformY = 0;
-      if (dist < DEFORM_RADIUS) {
-        const u = dist / DEFORM_RADIUS;
-        deformY = -DEFORM_DEPTH * 0.5 * (1 + Math.cos(Math.PI * u));
-      }
-
-      // final position = base + chaos * jitter + deform
-      positions[i*3]   = bx + jitterX * chaosFactor;
-      positions[i*3+1] = by + jitterY * chaosFactor + deformY;
-      positions[i*3+2] = bz + jitterZ * chaosFactor;
+      positions[i*3]   = bx + jx * chaosFactor;
+      positions[i*3+1] = by + jy * chaosFactor;
+      positions[i*3+2] = bz + jz * chaosFactor;
     }
     geo.attributes.position.needsUpdate = true;
 
-    // ── Render with trail fade ──
-    // 1. Draw fade quad (darkens previous frame slightly)
+    // Render with trail
     renderer.render(fadeScene, fadeCam);
-    // 2. Draw current points on top
     renderer.render(scene, camera);
   }
 
