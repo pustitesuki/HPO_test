@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glass Box — GTS</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    #canvas-container {
+      width: 800px;
+      height: 600px;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="canvas-container"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    (() => {
+      const container = document.getElementById('canvas-container');
+      const W = 800, H = 600;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      const camera = new THREE.PerspectiveCamera(35, W / H, 0.1, 200);
+      camera.position.set(7, 4.5, 8);
+      camera.lookAt(0, 1.6, 0);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(W, H);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.2;
+      container.appendChild(renderer.domElement);
+
+      const BLUE_DARK = 0x1a5fb4;
+      const BLUE_GLASS = 0x01DCFE;
+      const PARTICLE_COLOR = 0x0192A9;
+
+      // =============================================
+      // ROUNDED RECT SHAPE helper
+      // =============================================
+      function createRoundedRectShape(w, h, r) {
+        const shape = new THREE.Shape();
+        const hw = w / 2, hh = h / 2;
+        shape.moveTo(-hw + r, -hh);
+        shape.lineTo(hw - r, -hh);
+        shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
+        shape.lineTo(hw, hh - r);
+        shape.quadraticCurveTo(hw, hh, hw - r, hh);
+        shape.lineTo(-hw + r, hh);
+        shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
+        shape.lineTo(-hw, -hh + r);
+        shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+        return shape;
+      }
+
+      // Rounded rect edge line
+      function createRoundedRectLine(w, h, r, segments) {
+        const pts = [];
+        const hw = w / 2, hh = h / 2;
+        const n = segments || 8;
+
+        // Bottom edge
+        for (let i = 0; i <= n; i++) { const t = i / n; pts.push(new THREE.Vector3(-hw + r + t * (w - 2 * r), -hh, 0)); }
+        // Bottom-right corner
+        for (let i = 0; i <= n; i++) { const a = -Math.PI / 2 + (i / n) * (Math.PI / 2); pts.push(new THREE.Vector3(hw - r + Math.cos(a) * r, -hh + r + Math.sin(a) * r, 0)); }
+        // Right edge
+        for (let i = 0; i <= n; i++) { const t = i / n; pts.push(new THREE.Vector3(hw, -hh + r + t * (h - 2 * r), 0)); }
+        // Top-right corner
+        for (let i = 0; i <= n; i++) { const a = 0 + (i / n) * (Math.PI / 2); pts.push(new THREE.Vector3(hw - r + Math.cos(a) * r, hh - r + Math.sin(a) * r, 0)); }
+        // Top edge
+        for (let i = 0; i <= n; i++) { const t = i / n; pts.push(new THREE.Vector3(hw - r - t * (w - 2 * r), hh, 0)); }
+        // Top-left corner
+        for (let i = 0; i <= n; i++) { const a = Math.PI / 2 + (i / n) * (Math.PI / 2); pts.push(new THREE.Vector3(-hw + r + Math.cos(a) * r, hh - r + Math.sin(a) * r, 0)); }
+        // Left edge
+        for (let i = 0; i <= n; i++) { const t = i / n; pts.push(new THREE.Vector3(-hw, hh - r - t * (h - 2 * r), 0)); }
+        // Bottom-left corner
+        for (let i = 0; i <= n; i++) { const a = Math.PI + (i / n) * (Math.PI / 2); pts.push(new THREE.Vector3(-hw + r + Math.cos(a) * r, -hh + r + Math.sin(a) * r, 0)); }
+
+        return pts;
+      }
+
+      // =============================================
+      // GLASS LAYERS with rounded corners
+      // =============================================
+      const LAYER_COUNT = 7;
+      const LAYER_SIZE = 3.2;
+      const LAYER_THICKNESS = 0.04;
+      const TOTAL_DEPTH = 3.0;
+      const LAYER_SPACING = TOTAL_DEPTH / (LAYER_COUNT - 1);
+      const CENTER_Y = LAYER_SIZE / 2 + 0.05;
+      const CORNER_RADIUS = 0.3;
+
+      const roundedShape = createRoundedRectShape(LAYER_SIZE, LAYER_SIZE, CORNER_RADIUS);
+
+      // Store first and last layer Z for trace logic
+      const firstLayerZ = TOTAL_DEPTH / 2;
+      const lastLayerZ = -TOTAL_DEPTH / 2;
+
+      const layerGroups = [];
+
+      for (let i = 0; i < LAYER_COUNT; i++) {
+        const z = -TOTAL_DEPTH / 2 + i * LAYER_SPACING;
+
+        const group = new THREE.Group();
+        group.position.set(0, CENTER_Y, z);
+        scene.add(group);
+        layerGroups.push(group);
+
+        // Extruded rounded rect
+        const extrudeSettings = { depth: LAYER_THICKNESS, bevelEnabled: false };
+        const geo = new THREE.ExtrudeGeometry(roundedShape, extrudeSettings);
+        geo.translate(0, 0, -LAYER_THICKNESS / 2);
+
+        const mat = new THREE.MeshPhysicalMaterial({
+          color: BLUE_GLASS,
+          transparent: true,
+          opacity: 0.18,
+          roughness: 0.25,
+          metalness: 0.3,
+          transmission: 0.65,
+          thickness: 0.6,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+
+        const panel = new THREE.Mesh(geo, mat);
+        group.add(panel);
+
+        // Rounded edge outline
+        const edgePts = createRoundedRectLine(LAYER_SIZE, LAYER_SIZE, CORNER_RADIUS, 8);
+        const edgeGeo = new THREE.BufferGeometry().setFromPoints(edgePts);
+        const edgeMat = new THREE.LineBasicMaterial({
+          color: BLUE_DARK,
+          transparent: true,
+          opacity: 0.25,
+        });
+        const edgeLine = new THREE.LineLoop(edgeGeo, edgeMat);
+        group.add(edgeLine);
+      }
+
+      // =============================================
+      // TRACE SYSTEM — dynamic textures on first & last panels
+      // =============================================
+      const TRACE_SIZE = 512;
+
+      function createTraceCanvas() {
+        const canvas = document.createElement('canvas');
+        canvas.width = TRACE_SIZE;
+        canvas.height = TRACE_SIZE;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, TRACE_SIZE, TRACE_SIZE);
+        return { canvas, ctx };
+      }
+
+      const entryTrace = createTraceCanvas();
+      const exitTrace = createTraceCanvas();
+
+      const entryTexture = new THREE.CanvasTexture(entryTrace.canvas);
+      const exitTexture = new THREE.CanvasTexture(exitTrace.canvas);
+
+      // Overlay quads on first and last layers
+      function createTraceOverlay(texture) {
+        const geo = new THREE.PlaneGeometry(LAYER_SIZE, LAYER_SIZE);
+        const mat = new THREE.MeshBasicMaterial({
+          map: texture,
+          transparent: true,
+          opacity: 1.0,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(0, 0, 0.025);
+        return mesh;
+      }
+
+      const entryOverlay = createTraceOverlay(entryTexture);
+      layerGroups[LAYER_COUNT - 1].add(entryOverlay);
+      const exitOverlay = createTraceOverlay(exitTexture);
+      layerGroups[0].add(exitOverlay);
+
+      function addTrace(traceCtx, texture, x, y) {
+        // Map world coords to canvas coords
+        const cx = ((x / LAYER_SIZE) + 0.5) * TRACE_SIZE;
+        const cy = (1 - ((y - CENTER_Y) / LAYER_SIZE + 0.5)) * TRACE_SIZE;
+
+        if (cx < 0 || cx > TRACE_SIZE || cy < 0 || cy > TRACE_SIZE) return;
+
+        traceCtx.ctx.fillStyle = 'rgba(1, 220, 254, 0.6)';
+        traceCtx.ctx.beginPath();
+        traceCtx.ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+        traceCtx.ctx.fill();
+
+        // Subtle glow
+        traceCtx.ctx.fillStyle = 'rgba(1, 220, 254, 0.15)';
+        traceCtx.ctx.beginPath();
+        traceCtx.ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+        traceCtx.ctx.fill();
+
+        texture.needsUpdate = true;
+      }
+
+      // Fade traces over time
+      let fadeTimer = 0;
+      function fadeTraces(dt) {
+        fadeTimer += dt;
+        if (fadeTimer < 0.1) return;
+        fadeTimer = 0;
+
+        [entryTrace, exitTrace].forEach((tr, idx) => {
+          const tex = idx === 0 ? entryTexture : exitTexture;
+          tr.ctx.globalCompositeOperation = 'destination-out';
+          tr.ctx.fillStyle = 'rgba(0,0,0,0.012)';
+          tr.ctx.fillRect(0, 0, TRACE_SIZE, TRACE_SIZE);
+          tr.ctx.globalCompositeOperation = 'source-over';
+          tex.needsUpdate = true;
+        });
+      }
+
+      // =============================================
+      // PARTICLE SYSTEM
+      // =============================================
+      const PARTICLE_COUNT = 600;
+      const entryZ = TOTAL_DEPTH / 2 + 3.0;
+
+      // Ring zone (invisible) for exit guidance
+      const RING_INNER = 0.005;
+      const RING_OUTER = 0.01;
+      const RING_Z = -TOTAL_DEPTH / 2 - 1.2;
+
+      const positions = new Float32Array(PARTICLE_COUNT * 3);
+      const pGeo = new THREE.BufferGeometry();
+      pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+      const pMat = new THREE.PointsMaterial({
+        color: PARTICLE_COLOR,
+        size: 1.5,
+        sizeAttenuation: false,
+        transparent: true,
+        opacity: 1.0,
+        depthWrite: false,
+      });
+      const pointsMesh = new THREE.Points(pGeo, pMat);
+      scene.add(pointsMesh);
+
+      const pState = [];
+
+      function resetParticle(i) {
+        const s = pState[i];
+        s.state = 'entering';
+        s.x = (Math.random() - 0.5) * 2.6;
+        s.y = CENTER_Y + (Math.random() - 0.5) * 2.6;
+        s.z = entryZ + Math.random() * 2.0;
+        s.vx = (Math.random() - 0.5) * 0.4;
+        s.vy = (Math.random() - 0.5) * 0.4;
+        s.vz = -(2.0 + Math.random() * 1.5);
+        s.wobFreqX = 2 + Math.random() * 5;
+        s.wobFreqY = 2 + Math.random() * 5;
+        s.wobAmpX = 0.4 + Math.random() * 0.6;
+        s.wobAmpY = 0.3 + Math.random() * 0.5;
+        s.phase = Math.random() * Math.PI * 2;
+        s.opacity = 0.8 + Math.random() * 0.2;
+        s.ringAngle = Math.random() * Math.PI * 2;
+        s.ringR = RING_INNER + Math.random() * (RING_OUTER - RING_INNER);
+        s.tracedEntry = false;
+        s.tracedExit = false;
+      }
+
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        pState.push({
+          state: 'entering', x: 0, y: 0, z: 0,
+          vx: 0, vy: 0, vz: 0,
+          wobFreqX: 3, wobFreqY: 3, wobAmpX: 0.3, wobAmpY: 0.3,
+          phase: 0, opacity: 1, ringAngle: 0, ringR: 0.7,
+          tracedEntry: false, tracedExit: false,
+        });
+        resetParticle(i);
+        pState[i].z = entryZ - Math.random() * (entryZ - RING_Z + 5);
+      }
+
+      // =============================================
+      // LIGHTS
+      // =============================================
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+      dirLight.position.set(5, 10, 5);
+      scene.add(dirLight);
+      const blueLight = new THREE.PointLight(BLUE_GLASS, 0.4, 15);
+      blueLight.position.set(-2, 3, 2);
+      scene.add(blueLight);
+
+      // =============================================
+      // MOUSE
+      // =============================================
+      let mouseX = 0, mouseY = 0;
+      container.addEventListener('mousemove', (e) => {
+        const rect = container.getBoundingClientRect();
+        mouseX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+        mouseY = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+      });
+
+      // =============================================
+      // ANIMATION
+      // =============================================
+      const clock = new THREE.Clock();
+      const baseCamPos = camera.position.clone();
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const dt = Math.min(clock.getDelta(), 0.05);
+        const t = clock.getElapsedTime();
+
+        camera.position.x = baseCamPos.x + mouseX * 1.0;
+        camera.position.y = baseCamPos.y - mouseY * 0.6;
+        camera.lookAt(0, CENTER_Y * 0.85, 0);
+
+        // Wave effect
+        const waveInterval = 3.5;
+        const waveDuration = 0.8;
+        const localT = t % waveInterval;
+
+        for (let i = 0; i < LAYER_COUNT; i++) {
+          // Front layer is LAYER_COUNT - 1, back layer is 0
+          // We want the wave to propagate from front to back
+          const layerIndexFromFront = (LAYER_COUNT - 1) - i;
+          const delay = layerIndexFromFront * 0.12;
+          const layerT = localT - delay;
+
+          let scale = 1.0;
+          if (layerT > 0 && layerT < waveDuration) {
+            const pulse = Math.sin((layerT / waveDuration) * Math.PI);
+            scale = 1.0 + 0.15 * pulse;
+          }
+          layerGroups[i].scale.set(scale, scale, scale);
+        }
+
+        fadeTraces(dt);
+
+        const posArr = pGeo.attributes.position.array;
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const s = pState[i];
+          const prevZ = s.z;
+
+          if (s.state === 'entering') {
+            s.z += s.vz * dt;
+            s.x += s.vx * dt + Math.sin(t * s.wobFreqX + s.phase) * s.wobAmpX * dt;
+            s.y += s.vy * dt + Math.cos(t * s.wobFreqY + s.phase) * s.wobAmpY * dt;
+
+            // Crossed first layer?
+            if (prevZ >= firstLayerZ && s.z < firstLayerZ) {
+              if (!s.tracedEntry) {
+                addTrace(entryTrace, entryTexture, s.x, s.y);
+                s.tracedEntry = true;
+              }
+            }
+
+            if (s.z < TOTAL_DEPTH / 2) {
+              s.state = 'inside';
+            }
+          }
+
+          if (s.state === 'inside') {
+            s.z += s.vz * dt;
+
+            const progress = 1 - (s.z - lastLayerZ) / TOTAL_DEPTH;
+            const conv = Math.pow(Math.max(0, Math.min(1, progress)), 2);
+
+            const targetX = Math.cos(s.ringAngle) * s.ringR;
+            const targetY = CENTER_Y + Math.sin(s.ringAngle) * s.ringR;
+
+            // Increase pull significantly to ensure they strictly fall into the ring zone on the last layer
+            const pull = conv * 18.0;
+
+            s.x += (targetX - s.x) * pull * dt + Math.sin(t * s.wobFreqX + s.phase) * s.wobAmpX * (1 - Math.pow(conv, 0.5)) * dt;
+            s.y += (targetY - s.y) * pull * dt + Math.cos(t * s.wobFreqY + s.phase) * s.wobAmpY * (1 - Math.pow(conv, 0.5)) * dt;
+
+            // Crossed last layer?
+            if (prevZ >= lastLayerZ && s.z < lastLayerZ) {
+              if (!s.tracedExit) {
+                addTrace(exitTrace, exitTexture, s.x, s.y);
+                s.tracedExit = true;
+              }
+            }
+
+            if (s.z < lastLayerZ) {
+              s.state = 'exiting';
+            }
+          }
+
+          if (s.state === 'exiting') {
+            s.z += s.vz * dt * 1.1;
+
+            const targetX = Math.cos(s.ringAngle) * s.ringR;
+            const targetY = CENTER_Y + Math.sin(s.ringAngle) * s.ringR;
+            s.x += (targetX - s.x) * 5.0 * dt;
+            s.y += (targetY - s.y) * 5.0 * dt;
+
+            if (s.z < RING_Z - 1.5) {
+              s.opacity -= dt * 3;
+              if (s.opacity <= 0) {
+                resetParticle(i);
+              }
+            }
+          }
+
+          posArr[i * 3] = s.x;
+          posArr[i * 3 + 1] = s.y;
+          posArr[i * 3 + 2] = s.z;
+        }
+
+        pGeo.attributes.position.needsUpdate = true;
+        renderer.render(scene, camera);
+      }
+
+      animate();
+
+      window.addEventListener('resize', () => {
+        const rect = container.getBoundingClientRect();
+        camera.aspect = rect.width / rect.height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(rect.width, rect.height);
+      });
+    })();
+  </script>
+</body>
+
+</html>
