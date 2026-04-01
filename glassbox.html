@@ -22,9 +22,11 @@
     }
 
     #canvas-container {
-      width: 800px;
-      height: 600px;
-      position: relative;
+      width: 100vw;
+      height: 100vh;
+      position: absolute;
+      top: 0;
+      left: 0;
     }
 
     canvas {
@@ -42,7 +44,7 @@
   <script>
     (() => {
       const container = document.getElementById('canvas-container');
-      const W = 800, H = 600;
+      const W = window.innerWidth, H = window.innerHeight;
 
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0xffffff);
