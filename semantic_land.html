@@ -7,7 +7,7 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    background: #ffffff;
+    background: transparent;
     overflow: hidden;
     font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
     color: #334155;
@@ -33,7 +33,7 @@
   }
 
   .loading-screen {
-    position: fixed; inset: 0; background: #ffffff;
+    position: fixed; inset: 0; background: transparent;
     display: flex; align-items: center; justify-content: center;
     z-index: 1000; transition: opacity 1.2s ease;
   }
@@ -183,10 +183,10 @@
   // ═══════════════════════════════════
   //  THREE.JS SETUP
   // ═══════════════════════════════════
-  var renderer = new THREE.WebGLRenderer({ antialias: !isMobile });
+  var renderer = new THREE.WebGLRenderer({ antialias: !isMobile, alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setClearColor(CFG.background, 1);
+  renderer.setClearColor(CFG.background, 0);
   document.body.appendChild(renderer.domElement);
 
   var scene = new THREE.Scene();
@@ -271,7 +271,7 @@
   // ═══════════════════════════════════
   //  GRID CAGE
   // ═══════════════════════════════════
-  var gridMat = new THREE.LineBasicMaterial({ color: CFG.gridColor, transparent: true, opacity: CFG.gridOpacity });
+  var gridMat = new THREE.LineBasicMaterial({ color: CFG.gridColor, transparent: true, opacity: CFG.gridOpacity, fog: false });
   var step = CFG.gridStep, fv = [];
   for (var i = -HALF; i <= HALF; i += step) {
     fv.push(-HALF, -1, i, HALF, -1, i);
@@ -281,7 +281,7 @@
   fGeo.setAttribute('position', new THREE.Float32BufferAttribute(fv, 3));
   scene.add(new THREE.LineSegments(fGeo, gridMat));
 
-  var pillarMat = new THREE.LineBasicMaterial({ color: CFG.pillarColor, transparent: true, opacity: CFG.pillarOpacity });
+  var pillarMat = new THREE.LineBasicMaterial({ color: CFG.pillarColor, transparent: true, opacity: CFG.pillarOpacity, fog: false });
   var pH = 12;
   var corners = [[-HALF, -HALF], [-HALF, HALF], [HALF, -HALF], [HALF, HALF]];
   for (var ci = 0; ci < corners.length; ci++) {
@@ -396,8 +396,7 @@
       '  if (d > 0.5) discard;',
       '  float alpha = uAlpha * (1.0 - smoothstep(0.3, 0.5, d));',
       '  float fogF  = 1.0 - exp(-fogDensity * fogDensity * vDist * vDist);',
-      '  vec3  col   = mix(vColor, fogColor, fogF);',
-      '  gl_FragColor = vec4(col, alpha * (1.0 - fogF * 0.4));',
+      '  gl_FragColor = vec4(vColor, alpha * (1.0 - fogF));',
       '}'
     ].join('\n'),
     transparent: true,
