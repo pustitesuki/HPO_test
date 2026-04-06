@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chaos to Order — 3D Particle Simulation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #controls {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 12px; z-index: 10;
+  }
+  #controls button {
+    padding: 8px 20px; border: 1px solid rgba(255,255,255,0.3);
+    background: rgba(0,0,0,0.5); color: #fff; font-family: monospace;
+    font-size: 13px; cursor: pointer; border-radius: 4px; backdrop-filter: blur(6px);
+    transition: background 0.2s;
+  }
+  #controls button:hover { background: rgba(255,255,255,0.15); }
+  #timer {
+    position: fixed; top: 20px; right: 24px; z-index: 10;
+    font-family: monospace; font-size: 14px; color: rgba(255,255,255,0.5);
+  }
+</style>
+</head>
+<body>
+
+<div id="timer">0.00s</div>
+<div id="controls">
+  <button id="btnPlay">▶ Play</button>
+  <button id="btnReset">↺ Reset</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+
+// ═══════════════════════════════════════════════════════════════
+// CONFIG — All tunable parameters
+// ═══════════════════════════════════════════════════════════════
+const CONFIG = {
+  // Timing (seconds)
+  CHAOS_DURATION: 5.5,
+  TRANSITION_DURATION: 1.5,
+  ORDER_DURATION: 3.0,
+  TOTAL_DURATION: 10.0,
+
+  // Particles
+  MAX_PARTICLES: 3000,
+  SPAWN_RATE_START: 50,
+  SPAWN_RATE_END: 200,
+  PARTICLE_SIZE_MIN: 6.0,
+  PARTICLE_SIZE_MAX: 25.0,
+  PARTICLE_SIZE_ORDERED: 5.0,
+
+  // Chaos movement (3D)
+  CHAOS_SPEED_MIN: 0.3,
+  CHAOS_SPEED_MAX: 1.8,
+  CHAOS_DIRECTION_CHANGE_RATE: 2.5,
+  SPAWN_RADIUS: 80,
+  CHAOS_Y_RANGE: 120,
+
+  // Grid on XZ plane (Y = 0)
+  GRID_COLS: 25,
+  GRID_ROWS: 24,
+  GRID_SPACING: 18,
+
+  // Connection lines
+  LINE_MAX_DISTANCE: 88,
+  LINE_OPACITY: 0.4,
+
+  // Colors
+  COLOR_CHAOS_1: new THREE.Color(0xff2222),
+  COLOR_CHAOS_2: new THREE.Color(0xff8800),
+  COLOR_CHAOS_3: new THREE.Color(0xffaa33),
+  COLOR_ORDER_1: new THREE.Color(0x00F2FF),
+  COLOR_ORDER_2: new THREE.Color(0x1DD6FF),
+  COLOR_ORDER_3: new THREE.Color(0x1DD6FF),
+
+  // Glow / pulse
+  CHAOS_PULSE_SPEED_MIN: 3.0,
+  CHAOS_PULSE_SPEED_MAX: 12.0,
+  CHAOS_PULSE_AMOUNT: 0.6,
+  ORDER_PULSE_SPEED: 2.0,
+  ORDER_PULSE_AMOUNT: 0.15,
+
+  // Ordered "breathing"
+  ORDER_BREATHE_SPEED: 1.2,
+  ORDER_BREATHE_SIZE: 1.0,
+  ORDER_BREATHE_OPACITY: 0.2,
+  ORDER_BREATHE_DRIFT: 1.2,
+  ORDER_BREATHE_Y_DRIFT: 0.8,
+  ORDER_WAVE_SPEED: 0.8,
+  ORDER_WAVE_SCALE: 0.008,
+  ORDER_LINE_BREATHE: 0.15,
+
+  // Snap easing
+  SNAP_EASING_POWER: 3.0,
+
+  // Camera
+  CAM_DISTANCE: 500,
+  CAM_ANGLE_DEG: 25,
+  CAM_FOV: 45,
+
+  // Rotation around Y axis
+  ROTATION_SPEED: 0.08,
+  ROTATION_START_BLEND: 0.3,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// Setup — Perspective camera
+// ═══════════════════════════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(
+  CONFIG.CAM_FOV,
+  window.innerWidth / window.innerHeight,
+  1, 2000
+);
+
+const camAngleRad = CONFIG.CAM_ANGLE_DEG * Math.PI / 180;
+const camY = Math.sin(camAngleRad) * CONFIG.CAM_DISTANCE;
+const camHoriz = Math.cos(camAngleRad) * CONFIG.CAM_DISTANCE;
+camera.position.set(0, camY, camHoriz);
+camera.lookAt(0, 0, 0);
+
+// World group — everything rotates together
+const worldGroup = new THREE.Group();
+scene.add(worldGroup);
+
+// ═══════════════════════════════════════════════════════════════
+// Grid positions on XZ plane (Y = 0)
+// ═══════════════════════════════════════════════════════════════
+const gridPositions = [];
+for (let r = 0; r < CONFIG.GRID_ROWS; r++) {
+  for (let c = 0; c < CONFIG.GRID_COLS; c++) {
+    gridPositions.push({
+      x: (c - (CONFIG.GRID_COLS - 1) / 2) * CONFIG.GRID_SPACING,
+      y: 0,
+      z: (r - (CONFIG.GRID_ROWS - 1) / 2) * CONFIG.GRID_SPACING,
+    });
+  }
+}
+for (let i = gridPositions.length - 1; i > 0; i--) {
+  const j = Math.floor(Math.random() * (i + 1));
+  [gridPositions[i], gridPositions[j]] = [gridPositions[j], gridPositions[i]];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Geometry
+// ═══════════════════════════════════════════════════════════════
+const MAX = CONFIG.MAX_PARTICLES;
+
+const pointPositions = new Float32Array(MAX * 3);
+const pointColors = new Float32Array(MAX * 4);
+const pointSizes = new Float32Array(MAX);
+
+const pointGeometry = new THREE.BufferGeometry();
+pointGeometry.setAttribute('position', new THREE.BufferAttribute(pointPositions, 3));
+pointGeometry.setAttribute('color', new THREE.BufferAttribute(pointColors, 4));
+pointGeometry.setAttribute('size', new THREE.BufferAttribute(pointSizes, 1));
+
+const pointMaterial = new THREE.ShaderMaterial({
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  uniforms: {
+    uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
+  },
+  vertexShader: `
+    attribute float size;
+    attribute vec4 color;
+    varying vec4 vColor;
+    uniform float uPixelRatio;
+    void main() {
+      vColor = color;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * uPixelRatio * (300.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: `
+    varying vec4 vColor;
+    void main() {
+      vec2 center = gl_PointCoord - 0.5;
+      float dist = length(center);
+      if (dist > 0.5) discard;
+      float glow = 1.0 - smoothstep(0.0, 0.5, dist);
+      glow = pow(glow, 1.5);
+      gl_FragColor = vec4(vColor.rgb, vColor.a * glow);
+    }
+  `,
+});
+
+const pointsMesh = new THREE.Points(pointGeometry, pointMaterial);
+worldGroup.add(pointsMesh);
+
+const maxLines = MAX * 4;
+const linePositions = new Float32Array(maxLines * 2 * 3);
+const lineColors = new Float32Array(maxLines * 2 * 4);
+const lineGeometry = new THREE.BufferGeometry();
+lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+lineGeometry.setAttribute('color', new THREE.BufferAttribute(lineColors, 4));
+
+const lineMaterial = new THREE.ShaderMaterial({
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexShader: `
+    attribute vec4 color;
+    varying vec4 vColor;
+    void main() {
+      vColor = color;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec4 vColor;
+    void main() {
+      gl_FragColor = vColor;
+    }
+  `,
+});
+
+const linesMesh = new THREE.LineSegments(lineGeometry, lineMaterial);
+worldGroup.add(linesMesh);
+
+// ═══════════════════════════════════════════════════════════════
+// Particle data
+// ═══════════════════════════════════════════════════════════════
+const particles = [];
+let activeCount = 0;
+
+function createParticle(index) {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = Math.random() * CONFIG.SPAWN_RADIUS;
+  const ySpread = (Math.random() - 0.5) * CONFIG.CHAOS_Y_RANGE;
+  return {
+    index,
+    x: Math.cos(angle) * radius,
+    y: ySpread,
+    z: Math.sin(angle) * radius,
+    vx: (Math.random() - 0.5) * CONFIG.CHAOS_SPEED_MAX * 2,
+    vy: (Math.random() - 0.5) * CONFIG.CHAOS_SPEED_MAX * 1.2,
+    vz: (Math.random() - 0.5) * CONFIG.CHAOS_SPEED_MAX * 2,
+    targetX: 0, targetY: 0, targetZ: 0,
+    freezeX: 0, freezeY: 0, freezeZ: 0,
+    baseSize: CONFIG.PARTICLE_SIZE_MIN + Math.random() * (CONFIG.PARTICLE_SIZE_MAX - CONFIG.PARTICLE_SIZE_MIN),
+    pulseSpeed: CONFIG.CHAOS_PULSE_SPEED_MIN + Math.random() * (CONFIG.CHAOS_PULSE_SPEED_MAX - CONFIG.CHAOS_PULSE_SPEED_MIN),
+    pulseOffset: Math.random() * Math.PI * 2,
+    colorMix: Math.random(),
+    dirChangeTimer: Math.random() / CONFIG.CHAOS_DIRECTION_CHANGE_RATE,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════════
+let animTime = 0;
+let isPlaying = false;
+let spawnAccumulator = 0;
+let currentRotation = 0;
+const timerEl = document.getElementById('timer');
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, CONFIG.SNAP_EASING_POWER);
+}
+
+function lerpColor(c1, c2, c3, mix, t, target) {
+  const chaos = new THREE.Color().copy(c1).lerp(c2, mix);
+  const order = new THREE.Color().copy(CONFIG.COLOR_ORDER_1).lerp(CONFIG.COLOR_ORDER_2, mix);
+  target.copy(chaos).lerp(order, t);
+}
+
+function reset() {
+  animTime = 0;
+  activeCount = 0;
+  spawnAccumulator = 0;
+  currentRotation = 0;
+  isPlaying = false;
+  particles.length = 0;
+  worldGroup.rotation.y = 0;
+  pointPositions.fill(0);
+  pointColors.fill(0);
+  pointSizes.fill(0);
+  linePositions.fill(0);
+  lineColors.fill(0);
+  updateBuffers();
+  timerEl.textContent = '0.00s';
+}
+
+function updateBuffers() {
+  pointGeometry.attributes.position.needsUpdate = true;
+  pointGeometry.attributes.color.needsUpdate = true;
+  pointGeometry.attributes.size.needsUpdate = true;
+  pointGeometry.setDrawRange(0, activeCount);
+  lineGeometry.attributes.position.needsUpdate = true;
+  lineGeometry.attributes.color.needsUpdate = true;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Main loop
+// ═══════════════════════════════════════════════════════════════
+const tmpColor = new THREE.Color();
+let lastTime = performance.now();
+
+function animate(now) {
+  requestAnimationFrame(animate);
+
+  const rawDt = (now - lastTime) / 1000;
+  lastTime = now;
+  const dt = Math.min(rawDt, 0.05);
+
+  if (!isPlaying) {
+    renderer.render(scene, camera);
+    return;
+  }
+
+  animTime += dt;
+  timerEl.textContent = animTime.toFixed(2) + 's';
+
+  const chaosEnd = CONFIG.CHAOS_DURATION;
+  const transEnd = chaosEnd + CONFIG.TRANSITION_DURATION;
+
+  const inChaos = animTime < chaosEnd;
+  const inTransition = animTime >= chaosEnd && animTime < transEnd;
+  const inOrder = animTime >= transEnd;
+
+  const transT = inTransition ? (animTime - chaosEnd) / CONFIG.TRANSITION_DURATION : (inOrder ? 1.0 : 0.0);
+  const easedTransT = easeOutCubic(transT);
+
+  const orderT = inOrder ? Math.min((animTime - transEnd) / CONFIG.ORDER_DURATION, 1.0) : 0;
+  const easedOrderT = easeOutCubic(orderT);
+
+  const totalBlend = inChaos ? 0 : (inTransition ? easedTransT * 0.4 : 0.4 + 0.6 * easedOrderT);
+
+  // ── Rotation — ramps in during transition ──
+  const rotBlend = inChaos ? 0 :
+    (inTransition ? Math.max(0, (transT - CONFIG.ROTATION_START_BLEND) / (1 - CONFIG.ROTATION_START_BLEND)) : 1.0);
+  currentRotation += CONFIG.ROTATION_SPEED * rotBlend * dt;
+  worldGroup.rotation.y = currentRotation;
+
+  // ── Spawn ──
+  if ((inChaos || (inTransition && transT < 0.3)) && activeCount < MAX) {
+    const chaosProgress = Math.min(animTime / chaosEnd, 1.0);
+    const spawnRate = CONFIG.SPAWN_RATE_START + (CONFIG.SPAWN_RATE_END - CONFIG.SPAWN_RATE_START) * chaosProgress * chaosProgress;
+    const spawnMult = inTransition ? Math.max(0, 1 - transT * 3) : 1;
+    spawnAccumulator += spawnRate * spawnMult * dt;
+    while (spawnAccumulator >= 1 && activeCount < MAX) {
+      const p = createParticle(activeCount);
+      const gp = gridPositions[activeCount % gridPositions.length];
+      p.targetX = gp.x;
+      p.targetY = gp.y;
+      p.targetZ = gp.z;
+      particles.push(p);
+      activeCount++;
+      spawnAccumulator -= 1;
+    }
+  }
+
+  // ── Update particles ──
+  for (let i = 0; i < activeCount; i++) {
+    const p = particles[i];
+    const idx3 = i * 3;
+    const idx4 = i * 4;
+
+    if (inChaos) {
+      p.dirChangeTimer -= dt;
+      if (p.dirChangeTimer <= 0) {
+        const speed = CONFIG.CHAOS_SPEED_MIN + Math.random() * (CONFIG.CHAOS_SPEED_MAX - CONFIG.CHAOS_SPEED_MIN);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        p.vx = Math.sin(phi) * Math.cos(theta) * speed;
+        p.vy = Math.cos(phi) * speed * 0.6;
+        p.vz = Math.sin(phi) * Math.sin(theta) * speed;
+        p.dirChangeTimer = (0.3 + Math.random() * 0.7) / CONFIG.CHAOS_DIRECTION_CHANGE_RATE;
+      }
+
+      const expandFactor = 1 + (animTime / chaosEnd) * 5;
+      p.x += p.vx * dt * 60 * expandFactor;
+      p.y += p.vy * dt * 60 * expandFactor;
+      p.z += p.vz * dt * 60 * expandFactor;
+
+      const bound = 350;
+      const yBound = 200;
+      if (p.x > bound) p.x = -bound + Math.random() * 40;
+      if (p.x < -bound) p.x = bound - Math.random() * 40;
+      if (p.z > bound) p.z = -bound + Math.random() * 40;
+      if (p.z < -bound) p.z = bound - Math.random() * 40;
+      if (p.y > yBound) p.y = -yBound + Math.random() * 20;
+      if (p.y < -yBound) p.y = yBound - Math.random() * 20;
+
+      p.freezeX = p.x; p.freezeY = p.y; p.freezeZ = p.z;
+
+      const pulse = Math.sin(animTime * p.pulseSpeed + p.pulseOffset);
+      const opacity = 0.5 + CONFIG.CHAOS_PULSE_AMOUNT * pulse;
+      lerpColor(CONFIG.COLOR_CHAOS_1, CONFIG.COLOR_CHAOS_2, CONFIG.COLOR_ORDER_1, p.colorMix, 0, tmpColor);
+
+      pointPositions[idx3] = p.x;
+      pointPositions[idx3 + 1] = p.y;
+      pointPositions[idx3 + 2] = p.z;
+      pointColors[idx4] = tmpColor.r;
+      pointColors[idx4 + 1] = tmpColor.g;
+      pointColors[idx4 + 2] = tmpColor.b;
+      pointColors[idx4 + 3] = Math.max(0, opacity);
+      pointSizes[i] = p.baseSize * (0.8 + 0.4 * Math.abs(pulse));
+
+    } else if (inTransition) {
+      const decel = 1.0 - easedTransT;
+      p.x += p.vx * dt * 60 * decel;
+      p.y += p.vy * dt * 60 * decel;
+      p.z += p.vz * dt * 60 * decel;
+      p.freezeX = p.x; p.freezeY = p.y; p.freezeZ = p.z;
+
+      const chaosPulse = Math.sin(animTime * p.pulseSpeed + p.pulseOffset);
+      const calmPulse = Math.sin(animTime * CONFIG.ORDER_BREATHE_SPEED + p.pulseOffset);
+      const pulse = chaosPulse * (1 - easedTransT) + calmPulse * easedTransT;
+      const chaosOpacity = 0.5 + CONFIG.CHAOS_PULSE_AMOUNT * chaosPulse;
+      const calmOpacity = 0.75 + 0.15 * calmPulse;
+      const opacity = chaosOpacity * (1 - easedTransT) + calmOpacity * easedTransT;
+
+      lerpColor(CONFIG.COLOR_CHAOS_1, CONFIG.COLOR_CHAOS_2, CONFIG.COLOR_ORDER_1, p.colorMix, totalBlend, tmpColor);
+
+      pointPositions[idx3] = p.x;
+      pointPositions[idx3 + 1] = p.y;
+      pointPositions[idx3 + 2] = p.z;
+      pointColors[idx4] = tmpColor.r;
+      pointColors[idx4 + 1] = tmpColor.g;
+      pointColors[idx4 + 2] = tmpColor.b;
+      pointColors[idx4 + 3] = Math.max(0, opacity);
+      pointSizes[i] = p.baseSize * (0.9 + 0.2 * Math.abs(pulse));
+
+    } else if (inOrder) {
+      // Snap to XZ plane (Y → 0)
+      const baseX = p.freezeX + (p.targetX - p.freezeX) * easedOrderT;
+      const baseY = p.freezeY + (p.targetY - p.freezeY) * easedOrderT;
+      const baseZ = p.freezeZ + (p.targetZ - p.freezeZ) * easedOrderT;
+
+      // Breathing wave
+      const wave = Math.sin(
+        animTime * CONFIG.ORDER_WAVE_SPEED +
+        p.targetX * CONFIG.ORDER_WAVE_SCALE +
+        p.targetZ * CONFIG.ORDER_WAVE_SCALE * 0.7
+      );
+      const driftAmt = CONFIG.ORDER_BREATHE_DRIFT * easedOrderT;
+      const driftX = Math.sin(animTime * CONFIG.ORDER_BREATHE_SPEED * 0.7 + p.pulseOffset) * driftAmt * wave;
+      const driftZ = Math.cos(animTime * CONFIG.ORDER_BREATHE_SPEED * 0.9 + p.pulseOffset * 1.3) * driftAmt * wave;
+      const driftY = Math.sin(animTime * CONFIG.ORDER_BREATHE_SPEED + p.pulseOffset * 0.8) * CONFIG.ORDER_BREATHE_Y_DRIFT * wave * easedOrderT;
+
+      p.x = baseX + driftX;
+      p.y = baseY + driftY;
+      p.z = baseZ + driftZ;
+
+      const breathe = Math.sin(
+        animTime * CONFIG.ORDER_BREATHE_SPEED +
+        p.targetX * CONFIG.ORDER_WAVE_SCALE * 2 +
+        p.targetZ * CONFIG.ORDER_WAVE_SCALE * 1.5
+      );
+      const opacity = 0.75 + CONFIG.ORDER_BREATHE_OPACITY * breathe * easedOrderT;
+      const targetSize = CONFIG.PARTICLE_SIZE_ORDERED + CONFIG.ORDER_BREATHE_SIZE * breathe * easedOrderT;
+      const currentSize = p.baseSize + (targetSize - p.baseSize) * easedOrderT;
+
+      lerpColor(CONFIG.COLOR_CHAOS_1, CONFIG.COLOR_CHAOS_2, CONFIG.COLOR_ORDER_1, p.colorMix, totalBlend, tmpColor);
+
+      pointPositions[idx3] = p.x;
+      pointPositions[idx3 + 1] = p.y;
+      pointPositions[idx3 + 2] = p.z;
+      pointColors[idx4] = tmpColor.r;
+      pointColors[idx4 + 1] = tmpColor.g;
+      pointColors[idx4 + 2] = tmpColor.b;
+      pointColors[idx4 + 3] = Math.max(0, opacity);
+      pointSizes[i] = Math.max(1, currentSize);
+    }
+  }
+
+  // ── Connection lines ──
+  let lineVertexCount = 0;
+  const showLines = (inTransition && easedTransT > 0.6) || inOrder;
+  if (showLines) {
+    const maxDist = CONFIG.LINE_MAX_DISTANCE * (inTransition ? 2.5 : 1.0 + (1.0 - easedOrderT) * 1.0);
+    const maxDistSq = maxDist * maxDist;
+
+    let lineOpacity;
+    if (inTransition) {
+      lineOpacity = CONFIG.LINE_OPACITY * (easedTransT - 0.6) * 2.5 * 0.3;
+    } else {
+      const lineBreathe = Math.sin(animTime * CONFIG.ORDER_BREATHE_SPEED * 0.8);
+      lineOpacity = CONFIG.LINE_OPACITY * (0.5 + 0.5 * easedOrderT) * (1 + CONFIG.ORDER_LINE_BREATHE * lineBreathe);
+    }
+
+    for (let i = 0; i < activeCount && lineVertexCount < maxLines * 2; i++) {
+      const pi = particles[i];
+      for (let j = i + 1; j < activeCount && lineVertexCount < maxLines * 2; j++) {
+        const pj = particles[j];
+        const dx = pi.x - pj.x;
+        const dy = pi.y - pj.y;
+        const dz = pi.z - pj.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq < maxDistSq) {
+          const dist = Math.sqrt(distSq);
+          const fade = 1 - dist / maxDist;
+          const alpha = lineOpacity * fade;
+
+          const mix = (pi.colorMix + pj.colorMix) * 0.5;
+          const chaosC = new THREE.Color().copy(CONFIG.COLOR_CHAOS_1).lerp(CONFIG.COLOR_CHAOS_2, mix);
+          const orderC = new THREE.Color().copy(CONFIG.COLOR_ORDER_1).lerp(CONFIG.COLOR_ORDER_2, mix);
+          tmpColor.copy(chaosC).lerp(orderC, totalBlend);
+
+          const vi = lineVertexCount * 3;
+          const ci = lineVertexCount * 4;
+          linePositions[vi] = pi.x;
+          linePositions[vi + 1] = pi.y;
+          linePositions[vi + 2] = pi.z;
+          lineColors[ci] = tmpColor.r;
+          lineColors[ci + 1] = tmpColor.g;
+          lineColors[ci + 2] = tmpColor.b;
+          lineColors[ci + 3] = alpha;
+          lineVertexCount++;
+
+          const vi2 = lineVertexCount * 3;
+          const ci2 = lineVertexCount * 4;
+          linePositions[vi2] = pj.x;
+          linePositions[vi2 + 1] = pj.y;
+          linePositions[vi2 + 2] = pj.z;
+          lineColors[ci2] = tmpColor.r;
+          lineColors[ci2 + 1] = tmpColor.g;
+          lineColors[ci2 + 2] = tmpColor.b;
+          lineColors[ci2 + 3] = alpha;
+          lineVertexCount++;
+        }
+      }
+    }
+  }
+  lineGeometry.setDrawRange(0, lineVertexCount);
+
+  updateBuffers();
+  renderer.render(scene, camera);
+}
+
+requestAnimationFrame(animate);
+
+// ═══════════════════════════════════════════════════════════════
+// Controls
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('btnPlay').addEventListener('click', () => {
+  if (animTime >= CONFIG.TOTAL_DURATION) reset();
+  isPlaying = true;
+});
+document.getElementById('btnReset').addEventListener('click', () => reset());
+
+// ═══════════════════════════════════════════════════════════════
+// Resize
+// ═══════════════════════════════════════════════════════════════
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  pointMaterial.uniforms.uPixelRatio.value = Math.min(window.devicePixelRatio, 2);
+});
+
+reset();
+</script>
+</body>
+</html>
