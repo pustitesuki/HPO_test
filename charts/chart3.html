@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agents by Source</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono&family=Space+Grotesk:wght@400&display=swap"
+    rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+    }
+
+    /* ── Card ── */
+    .chart-card {
+      position: relative;
+      width: 489px;
+      height: 228px;
+
+      opacity: 0;
+      transform: translateY(28px);
+      animation: card-enter .65s cubic-bezier(.34, 1.2, .64, 1) .1s forwards;
+    }
+
+    @keyframes card-enter {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ── Title ── */
+    .chart-title {
+      position: absolute;
+      left: 96px;
+      top: 33px;
+      transform: translateY(-50%);
+      font-family: 'Space Mono', monospace;
+      font-size: 16px;
+      color: #90a1b9;
+      white-space: nowrap;
+      line-height: 1.5;
+
+      opacity: 0;
+      animation: fade-up .5s ease-out .55s forwards;
+    }
+
+    /* ── Donut SVG ── */
+    .donut-svg {
+      position: absolute;
+      left: 281px;
+      top: 34px;
+      width: 208px;
+      height: 208px;
+      overflow: visible;
+    }
+
+    /* ── Mask Animation ── */
+    .mask-reveal {
+      stroke-dasharray: 0 630;
+      stroke-dashoffset: 0;
+      animation: draw-mask 1.5s cubic-bezier(.4, 0, .2, 1) .5s forwards;
+      transform: rotate(-51deg);
+      transform-origin: center;
+    }
+
+    @keyframes draw-mask {
+      to {
+        stroke-dasharray: 630 0;
+      }
+    }
+
+    /* ── Center text ── */
+    .center-number {
+      position: absolute;
+      left: 385px;
+      top: 116px;
+      transform: translate(-50%, -50%);
+      font-family: 'Space Mono', monospace;
+      font-size: 30px;
+      color: #90a1b9;
+      white-space: nowrap;
+      line-height: 1.5;
+      opacity: 0;
+      animation: fade-in .4s ease-out 1.0s forwards;
+    }
+
+    .center-label {
+      position: absolute;
+      left: 385px;
+      top: 144px;
+      transform: translate(-50%, -50%);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 12px;
+      color: #90a1b9;
+      white-space: nowrap;
+      line-height: 20px;
+      opacity: 0;
+      animation: fade-in .4s ease-out 1.0s forwards;
+    }
+
+    /* ── Legend ── */
+    .legend {
+      position: absolute;
+      left: 96px;
+      top: 130px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0;
+    }
+
+    .legend-item:nth-child(1) {
+      animation: fade-left .45s ease-out 2.2s forwards;
+    }
+
+    .legend-item:nth-child(2) {
+      animation: fade-left .45s ease-out 2.35s forwards;
+    }
+
+    .legend-item:nth-child(3) {
+      animation: fade-left .45s ease-out 2.5s forwards;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+
+    .legend-text {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 12px;
+      color: #90a1b9;
+      white-space: nowrap;
+      line-height: 20px;
+    }
+
+    /* ── Shared keyframes ── */
+    @keyframes fade-in {
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes fade-up {
+      from {
+        opacity: 0;
+        transform: translateY(calc(-50% + 8px));
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(-50%);
+      }
+    }
+
+    @keyframes fade-left {
+      from {
+        opacity: 0;
+        transform: translateX(-10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="chart-card">
+
+    <div class="chart-title">Connections by Provider</div>
+
+    <!-- Donut chart -->
+    <svg class="donut-svg" viewBox="0 0 208 208" fill="none">
+      <defs>
+        <mask id="chart-mask">
+          <circle cx="104" cy="104" r="100" fill="none" stroke="white" stroke-width="200" class="mask-reveal" />
+        </mask>
+      </defs>
+
+      <image href="chart3.png" x="0" y="0" width="208" height="268.4" mask="url(#chart-mask)" />
+    </svg>
+    <div class="center-number" id="counter">0</div>
+    <div class="center-label">Total</div>
+
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#00D4FF"></div>
+        <span class="legend-text">Git: 12 (100.0%)</span>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Count-up animation for the center number
+    const el = document.getElementById('counter');
+    const target = 12;
+    const delay = 1000; // ms — matches animation start
+    const dur = 900;  // ms
+
+    setTimeout(() => {
+      const t0 = performance.now();
+      function tick(now) {
+        const p = Math.min((now - t0) / dur, 1);
+        const eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = Math.round(eased * target);
+        if (p < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }, delay);
+  </script>
+
+</body>
+
+</html>
