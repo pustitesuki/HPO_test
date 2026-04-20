@@ -24,10 +24,18 @@
       min-height: 100vh;
     }
 
+    .canvas-wrapper {
+      width: 550px;
+      height: 223px;
+      overflow: visible;
+    }
+
     .canvas {
       position: relative;
       width: 1060px;
       height: 430px;
+      transform-origin: top left;
+      transform: scale(calc(550 / 1060));
     }
 
     /* ── nodes ── */
@@ -119,7 +127,7 @@
 </head>
 
 <body>
-  <div class="canvas">
+  <div class="canvas-wrapper"><div class="canvas">
     <!--
       Connection layout (Figma canvas coords, W=1040 H=420):
         line1: image1 right (223,22) → image2 left  (272,22)  horizontal
@@ -151,7 +159,7 @@
     <div id="node4" class="node"><img src="image4.png" alt="error"></div>
     <div id="node5" class="node"><img src="image5.png" alt="response"></div>
     <div id="node6" class="node"><img src="image6.png" alt="response"></div>
-  </div>
+  </div></div>
 
   <script>
     // Calculate each path length and set dasharray/dashoffset so it's "invisible drawn"
