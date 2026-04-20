@@ -1,233 +1,248 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nodes Visualization</title>
+  <meta charset="utf-8" />
+  <title>HPO Sphere — static view</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    @keyframes bgFadeIn {
-      from {
-        opacity: 0;
-      }
-
-      to {
-        opacity: 1;
-      }
-    }
-
-    body {
-      background-color: transparent;
-      /* Глубокий темный фон */
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      overflow: hidden;
-      position: relative;
-    }
-
-    /* Анимируем только свечение отдельно от контента */
-    body::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(0, 212, 255, 0.12) 0%, transparent 65%);
-      opacity: 0;
-      animation: bgFadeIn 3.2s ease-out forwards;
-      z-index: 0;
-      pointer-events: none;
-    }
-
-    .canvas-wrapper {
-      position: relative;
-      z-index: 1;
-      /* Чтобы контент был поверх свечения */
-      width: 550px;
-      height: 223px;
-      overflow: visible;
-    }
-
-    .canvas {
-      position: relative;
-      width: 1060px;
-      height: 430px;
-      transform-origin: top left;
-      transform: scale(calc(550 / 1060));
-    }
-
-    /* ── nodes ── */
-    .node {
-      position: absolute;
-      opacity: 0;
-      transform: translateY(10px) scale(0.9);
-      will-change: opacity, transform, filter;
-    }
-
-    .node img {
-      display: block;
-    }
-
-    @keyframes nodeIn {
-      0% {
-        opacity: 0;
-        transform: translateY(10px) scale(0.9);
-        filter: blur(6px);
-      }
-
-      100% {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-        filter: blur(0);
-      }
-    }
-
-    .node.show {
-      animation: nodeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-    }
-
-    #node1 {
-      left: 2px;
-      top: 2px;
-      z-index: 1;
-    }
-
-    #node2 {
-      left: 238px;
-      top: -23px;
-      z-index: 1;
-    }
-
-    #node3 {
-      left: 535px;
-      top: -3px;
-      z-index: 2;
-    }
-
-    #node4 {
-      left: 545px;
-      top: 217px;
-      z-index: 2;
-    }
-
-    #node5 {
-      left: 813px;
-      top: -3px;
-      z-index: 2;
-    }
-
-    #node6 {
-      left: 784px;
-      top: 315px;
-      z-index: 2;
-    }
-
-    /* ── svg connections ── */
-    .svg-layer {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      overflow: visible;
-      pointer-events: none;
-    }
-
-    .conn {
-      fill: none;
-      stroke: rgba(177, 177, 183, 0.75);
-      stroke-width: 1.5;
-      stroke-linecap: round;
-      opacity: 0;
-      transition: stroke-dashoffset 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-        opacity 0.1s ease;
-    }
+    html, body { margin:0; height:100%; background:transparent; overflow:hidden; font-family:Space Grotesk,ui-sans-serif,system-ui; }
+    #container { width:100%; height:100%; }
   </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
-
 <body>
-  <div class="canvas-wrapper">
-    <div class="canvas">
-      <!--
-      Connection layout (Figma canvas coords, W=1040 H=420):
-        line1: image1 right (223,22) → image2 left  (272,22)  horizontal
-        line2: image2 if   (499,58) → image3 left   (535,17)  up-right diagonal
-        line3: image2 else (499,130)→ image4 left   (545,237) down-right diagonal
-        line4: image3 right(761,17) → image5 left   (814,17)  horizontal
-        line5: image4 right(769,243)→ image6 left   (784,332) short diagonal down
-    -->
-      <svg class="svg-layer" viewBox="0 0 1060 430">
-        <!-- line1: image1 → image2 -->
-        <path id="line1" class="conn" d="M 223,22 C 247,22 247,22 272,22" />
+  <div id="container"></div>
 
-        <!-- line2: image2 (if) → image3 -->
-        <path id="line2" class="conn" d="M 499,58 C 517,58 517,17 535,17" />
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { Line2 } from 'three/addons/lines/Line2.js';
+    import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+    import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
-        <!-- line3: image2 (else) → image4 -->
-        <path id="line3" class="conn" d="M 499,130 C 522,130 522,237 545,237" />
+    const DATA_URL = 'hpo_graph_b.json';
+    const MAX = 5000;
+    const R = 140;
+    const ALLOWED_RADIUS = R * 1.2;
+    const BASE_SPEED = 0.35;
+    let MAX_LINKS_PER_NODE = 12;
+    let FILTER_TYPE = 'any';
 
-        <!-- line4: image3 → image5 -->
-        <path id="line4" class="conn" d="M 761,17 C 787,17 787,17 814,17" />
+    const container = document.getElementById('container');
+    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setClearColor(0x000000,0);
+    container.appendChild(renderer.domElement);
 
-        <!-- line5: image4 → image6 -->
-        <path id="line5" class="conn" d="M 768,240 C 777,253 777,332 784,332" />
-      </svg>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 5000);
+    camera.position.set(0,0,250);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enableZoom = false;
+    controls.mouseButtons.WHEEL = null;
 
-      <div id="node1" class="node"><img src="image1.png" alt="request"></div>
-      <div id="node2" class="node"><img src="image2.png" alt="switch1"></div>
-      <div id="node3" class="node"><img src="image3.png" alt="welcome"></div>
-      <div id="node4" class="node"><img src="image4.png" alt="error"></div>
-      <div id="node5" class="node"><img src="image5.png" alt="response"></div>
-      <div id="node6" class="node"><img src="image6.png" alt="response"></div>
-    </div>
-  </div>
+    scene.add(new THREE.AmbientLight(0x5260a8,0.28));
+    const keyLight = new THREE.DirectionalLight(0xaec8ff,0.8);
+    keyLight.position.set(1,1,1);
+    scene.add(keyLight);
 
-  <script>
-    // Calculate each path length and set dasharray/dashoffset so it's "invisible drawn"
-    document.querySelectorAll('.conn').forEach(path => {
-      const len = path.getTotalLength();
-      path.style.strokeDasharray = len;
-      path.style.strokeDashoffset = len;
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const BLUE_DARK  = new THREE.Color('#69B9FF');
+    const BLUE_LIGHT = new THREE.Color('#EAF6FF');
+    function blueGradient(t){ return BLUE_DARK.clone().lerp(BLUE_LIGHT, THREE.MathUtils.clamp(t,0,1)); }
+
+    const posArr = new Float32Array(MAX*3);
+    const colorArr = new Float32Array(MAX*3);
+    const vel = Array.from({length:MAX},()=>new THREE.Vector3());
+
+    function setPointColor(i){
+      colorArr[i*3+0]=0.82; colorArr[i*3+1]=0.92; colorArr[i*3+2]=1.00;
+    }
+
+    function initParticle(i){
+      const u=Math.random(), v=Math.random(), w=Math.random();
+      const phi=Math.acos(2*u-1);
+      const theta=2*Math.PI*v;
+      const radius=R*Math.cbrt(w);
+      posArr[i*3+0]=radius*Math.sin(phi)*Math.cos(theta);
+      posArr[i*3+1]=radius*Math.cos(phi);
+      posArr[i*3+2]=radius*Math.sin(phi)*Math.sin(theta);
+      const dir=new THREE.Vector3(Math.random()-0.5,Math.random()-0.5,Math.random()-0.5).normalize();
+      const speed=(0.5+Math.random()*0.75)*BASE_SPEED;
+      vel[i].copy(dir.multiplyScalar(speed));
+      setPointColor(i);
+    }
+
+    const geoPoints=new THREE.BufferGeometry();
+    geoPoints.setAttribute('position',new THREE.BufferAttribute(posArr,3).setUsage(THREE.DynamicDrawUsage));
+    geoPoints.setAttribute('color',new THREE.BufferAttribute(colorArr,3));
+    geoPoints.setDrawRange(0,0);
+
+    const vertexShader=`
+      attribute float size;
+      attribute vec3 color;
+      varying vec3 vColor;
+      void main(){
+        vColor=color;
+        vec4 mvPosition=modelViewMatrix*vec4(position,1.0);
+        float attenuatedSize=size*(300.0/-mvPosition.z);
+        gl_PointSize=attenuatedSize;
+        gl_Position=projectionMatrix*mvPosition;
+      }
+    `;
+    const fragmentShader=`
+      varying vec3 vColor;
+      void main(){
+        vec2 c=gl_PointCoord-vec2(0.5);
+        float r=length(c);
+        float alpha=smoothstep(0.5,0.48,r);
+        gl_FragColor=vec4(vColor,alpha);
+      }
+    `;
+
+    const pointsMat=new THREE.ShaderMaterial({
+      vertexShader,fragmentShader,transparent:true,
+      blending:THREE.AdditiveBlending,depthWrite:false
+    });
+    const points=new THREE.Points(geoPoints,pointsMat);
+    group.add(points);
+
+    const lineGeom=new LineGeometry();
+    const lineMat=new LineMaterial({
+      linewidth:0.25,transparent:true,opacity:1,vertexColors:true,
+      blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false
+    });
+    lineMat.resolution.set(innerWidth,innerHeight);
+    const lineMesh=new Line2(lineGeom,lineMat);
+    group.add(lineMesh);
+
+    let NODES=[],EDGES_RAW=[],ADJ=[],id2index=new Map(),COUNT=0;
+
+    function buildAdjacency(){
+      ADJ=Array.from({length:NODES.length},()=>[]);
+      id2index.clear();
+      NODES.forEach((n,i)=>id2index.set(n.id,i));
+      for(const e of EDGES_RAW){
+        const a=id2index.get(e.source), b=id2index.get(e.target);
+        if(a==null||b==null||a===b)continue;
+        const t=e.type||'associated';
+        ADJ[a].push({j:b,type:t});
+        ADJ[b].push({j:a,type:t});
+      }
+    }
+
+    function spawnAll(){
+      COUNT=Math.min(NODES.length,MAX);
+      for(let i=0;i<COUNT;i++)initParticle(i);
+      geoPoints.setDrawRange(0,COUNT);
+      geoPoints.attributes.position.needsUpdate=true;
+      geoPoints.attributes.color.needsUpdate=true;
+      updatePointSizes();
+      rebuildLines();
+    }
+
+    function updatePointSizes(){
+      const sizes=new Float32Array(COUNT);
+      for(let i=0;i<COUNT;i++){
+        const degree=(ADJ[i]?.length||0);
+        sizes[i]=3.8+degree*2.0;
+      }
+      geoPoints.setAttribute('size',new THREE.BufferAttribute(sizes,1));
+      geoPoints.attributes.size.needsUpdate=true;
+    }
+
+    function rebuildLines(){
+      const P=[],C=[];
+      if(COUNT<2){P.push(0,0,0,0,0,0);C.push(1,1,1,1,1,1);}
+      else{
+        for(let i=0;i<COUNT;i++){
+          const nbrs=ADJ[i];
+          if(!nbrs||!nbrs.length)continue;
+          let used=0;
+          for(let k=0;k<nbrs.length&&used<MAX_LINKS_PER_NODE;k++){
+            const {j,type}=nbrs[k];
+            if(j<=i)continue;
+            if(FILTER_TYPE!=='any'&&type!==FILTER_TYPE)continue;
+            const ax=posArr[i*3],ay=posArr[i*3+1],az=posArr[i*3+2];
+            const bx=posArr[j*3],by=posArr[j*3+1],bz=posArr[j*3+2];
+            const d=Math.hypot(ax-bx,ay-by,az-bz);
+            const t=THREE.MathUtils.clamp(1-d/(R*1.2),0,1);
+            const col=blueGradient(0.6+0.4*t);
+            P.push(ax,ay,az,bx,by,bz);
+            C.push(col.r,col.g,col.b,col.r,col.g,col.b);
+            used++;
+          }
+        }
+      }
+      lineGeom.setPositions(P);
+      lineGeom.setColors(C);
+      lineGeom.needsUpdate=true;
+    }
+
+    const GLOBAL_DAMPING=0.7;
+    const MAX_SPEED=BASE_SPEED*1.8;
+    function updatePositions(){
+      for(let i=0;i<COUNT;i++){
+        vel[i].multiplyScalar(GLOBAL_DAMPING);
+        let nx=posArr[i*3]+vel[i].x;
+        let ny=posArr[i*3+1]+vel[i].y;
+        let nz=posArr[i*3+2]+vel[i].z;
+        const dist2=Math.hypot(nx,ny,nz);
+        if(dist2>ALLOWED_RADIUS){
+          const f=ALLOWED_RADIUS/dist2;
+          nx*=f; ny*=f; nz*=f;
+          vel[i].multiplyScalar(-1);
+        }
+        posArr[i*3]=nx; posArr[i*3+1]=ny; posArr[i*3+2]=nz;
+        const sp=Math.hypot(vel[i].x,vel[i].y,vel[i].z);
+        if(sp>MAX_SPEED){
+          const k=MAX_SPEED/sp;
+          vel[i].multiplyScalar(k);
+        }
+      }
+      geoPoints.attributes.position.needsUpdate=true;
+    }
+
+    let rotationY=0;
+    function animate(){
+      updatePositions();
+      rotationY+=0.0005;
+      group.rotation.y=rotationY;
+      controls.update();
+      renderer.render(scene,camera);
+      requestAnimationFrame(animate);
+    }
+
+    addEventListener('resize',()=>{
+      camera.aspect=innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth,innerHeight);
+      lineMat.resolution.set(innerWidth,innerHeight);
     });
 
-    function showNode(id, delay) {
-      setTimeout(() => document.getElementById(id).classList.add('show'), delay);
+    async function loadData(){
+      const data=await (await fetch(DATA_URL)).json();
+      NODES=data.nodes||[];
+      EDGES_RAW=data.edges||[];
+      buildAdjacency();
+      spawnAll();
+      animate();
     }
-
-    function drawLine(id, delay) {
-      setTimeout(() => {
-        const el = document.getElementById(id);
-        el.style.opacity = '1';
-        el.style.strokeDashoffset = '0';
-      }, delay);
-    }
-
-    // Sequence: node1 → line1 → node2 → line2+line3 → node3 → node4 → line4 → node5 → line5 → node6
-    const t = {
-      node1: 0,
-      line1: 560,
-      node2: 1050,
-      line2: 1600,
-      line3: 1850,
-      node3: 2280,
-      node4: 2580,
-      line4: 3080,
-      node5: 3480,
-      line5: 3930,
-      node6: 4330,
-    };
-
-    ['node1', 'node2', 'node3', 'node4', 'node5', 'node6'].forEach(id => showNode(id, t[id]));
-    ['line1', 'line2', 'line3', 'line4', 'line5'].forEach(id => drawLine(id, t[id]));
+    loadData();
   </script>
 </body>
-
 </html>
