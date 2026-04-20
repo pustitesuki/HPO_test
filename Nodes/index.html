@@ -14,17 +14,44 @@
       padding: 0;
     }
 
+    @keyframes bgFadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
     body {
       background-color: transparent;
-      background-image:
-        radial-gradient(ellipse 80% 60% at 50% 40%, rgba(0, 212, 255, 0.05) 0%, transparent 65%);
+      /* Глубокий темный фон */
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
+      margin: 0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Анимируем только свечение отдельно от контента */
+    body::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(0, 212, 255, 0.12) 0%, transparent 65%);
+      opacity: 0;
+      animation: bgFadeIn 3.2s ease-out forwards;
+      z-index: 0;
+      pointer-events: none;
     }
 
     .canvas-wrapper {
+      position: relative;
+      z-index: 1;
+      /* Чтобы контент был поверх свечения */
       width: 550px;
       height: 223px;
       overflow: visible;
@@ -127,8 +154,9 @@
 </head>
 
 <body>
-  <div class="canvas-wrapper"><div class="canvas">
-    <!--
+  <div class="canvas-wrapper">
+    <div class="canvas">
+      <!--
       Connection layout (Figma canvas coords, W=1040 H=420):
         line1: image1 right (223,22) → image2 left  (272,22)  horizontal
         line2: image2 if   (499,58) → image3 left   (535,17)  up-right diagonal
@@ -136,30 +164,31 @@
         line4: image3 right(761,17) → image5 left   (814,17)  horizontal
         line5: image4 right(769,243)→ image6 left   (784,332) short diagonal down
     -->
-    <svg class="svg-layer" viewBox="0 0 1060 430">
-      <!-- line1: image1 → image2 -->
-      <path id="line1" class="conn" d="M 223,22 C 247,22 247,22 272,22" />
+      <svg class="svg-layer" viewBox="0 0 1060 430">
+        <!-- line1: image1 → image2 -->
+        <path id="line1" class="conn" d="M 223,22 C 247,22 247,22 272,22" />
 
-      <!-- line2: image2 (if) → image3 -->
-      <path id="line2" class="conn" d="M 499,58 C 517,58 517,17 535,17" />
+        <!-- line2: image2 (if) → image3 -->
+        <path id="line2" class="conn" d="M 499,58 C 517,58 517,17 535,17" />
 
-      <!-- line3: image2 (else) → image4 -->
-      <path id="line3" class="conn" d="M 499,130 C 522,130 522,237 545,237" />
+        <!-- line3: image2 (else) → image4 -->
+        <path id="line3" class="conn" d="M 499,130 C 522,130 522,237 545,237" />
 
-      <!-- line4: image3 → image5 -->
-      <path id="line4" class="conn" d="M 761,17 C 787,17 787,17 814,17" />
+        <!-- line4: image3 → image5 -->
+        <path id="line4" class="conn" d="M 761,17 C 787,17 787,17 814,17" />
 
-      <!-- line5: image4 → image6 -->
-      <path id="line5" class="conn" d="M 768,240 C 777,253 777,332 784,332" />
-    </svg>
+        <!-- line5: image4 → image6 -->
+        <path id="line5" class="conn" d="M 768,240 C 777,253 777,332 784,332" />
+      </svg>
 
-    <div id="node1" class="node"><img src="image1.png" alt="request"></div>
-    <div id="node2" class="node"><img src="image2.png" alt="switch1"></div>
-    <div id="node3" class="node"><img src="image3.png" alt="welcome"></div>
-    <div id="node4" class="node"><img src="image4.png" alt="error"></div>
-    <div id="node5" class="node"><img src="image5.png" alt="response"></div>
-    <div id="node6" class="node"><img src="image6.png" alt="response"></div>
-  </div></div>
+      <div id="node1" class="node"><img src="image1.png" alt="request"></div>
+      <div id="node2" class="node"><img src="image2.png" alt="switch1"></div>
+      <div id="node3" class="node"><img src="image3.png" alt="welcome"></div>
+      <div id="node4" class="node"><img src="image4.png" alt="error"></div>
+      <div id="node5" class="node"><img src="image5.png" alt="response"></div>
+      <div id="node6" class="node"><img src="image6.png" alt="response"></div>
+    </div>
+  </div>
 
   <script>
     // Calculate each path length and set dasharray/dashoffset so it's "invisible drawn"
