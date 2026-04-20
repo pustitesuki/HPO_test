@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nodes Visualization</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: transparent;
+      background-image:
+        radial-gradient(ellipse 80% 60% at 50% 40%, rgba(0, 212, 255, 0.05) 0%, transparent 65%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .canvas {
+      position: relative;
+      width: 1060px;
+      height: 430px;
+    }
+
+    /* ── nodes ── */
+    .node {
+      position: absolute;
+      opacity: 0;
+      transform: translateY(10px) scale(0.9);
+      will-change: opacity, transform, filter;
+    }
+
+    .node img {
+      display: block;
+    }
+
+    @keyframes nodeIn {
+      0% {
+        opacity: 0;
+        transform: translateY(10px) scale(0.9);
+        filter: blur(6px);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+      }
+    }
+
+    .node.show {
+      animation: nodeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    #node1 {
+      left: 2px;
+      top: 2px;
+      z-index: 1;
+    }
+
+    #node2 {
+      left: 238px;
+      top: -23px;
+      z-index: 1;
+    }
+
+    #node3 {
+      left: 535px;
+      top: -3px;
+      z-index: 2;
+    }
+
+    #node4 {
+      left: 545px;
+      top: 217px;
+      z-index: 2;
+    }
+
+    #node5 {
+      left: 813px;
+      top: -3px;
+      z-index: 2;
+    }
+
+    #node6 {
+      left: 784px;
+      top: 315px;
+      z-index: 2;
+    }
+
+    /* ── svg connections ── */
+    .svg-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .conn {
+      fill: none;
+      stroke: rgba(177, 177, 183, 0.75);
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      opacity: 0;
+      transition: stroke-dashoffset 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 0.1s ease;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="canvas">
+    <!--
+      Connection layout (Figma canvas coords, W=1040 H=420):
+        line1: image1 right (223,22) → image2 left  (272,22)  horizontal
+        line2: image2 if   (499,58) → image3 left   (535,17)  up-right diagonal
+        line3: image2 else (499,130)→ image4 left   (545,237) down-right diagonal
+        line4: image3 right(761,17) → image5 left   (814,17)  horizontal
+        line5: image4 right(769,243)→ image6 left   (784,332) short diagonal down
+    -->
+    <svg class="svg-layer" viewBox="0 0 1060 430">
+      <!-- line1: image1 → image2 -->
+      <path id="line1" class="conn" d="M 223,22 C 247,22 247,22 272,22" />
+
+      <!-- line2: image2 (if) → image3 -->
+      <path id="line2" class="conn" d="M 499,58 C 517,58 517,17 535,17" />
+
+      <!-- line3: image2 (else) → image4 -->
+      <path id="line3" class="conn" d="M 499,130 C 522,130 522,237 545,237" />
+
+      <!-- line4: image3 → image5 -->
+      <path id="line4" class="conn" d="M 761,17 C 787,17 787,17 814,17" />
+
+      <!-- line5: image4 → image6 -->
+      <path id="line5" class="conn" d="M 768,240 C 777,253 777,332 784,332" />
+    </svg>
+
+    <div id="node1" class="node"><img src="image1.png" alt="request"></div>
+    <div id="node2" class="node"><img src="image2.png" alt="switch1"></div>
+    <div id="node3" class="node"><img src="image3.png" alt="welcome"></div>
+    <div id="node4" class="node"><img src="image4.png" alt="error"></div>
+    <div id="node5" class="node"><img src="image5.png" alt="response"></div>
+    <div id="node6" class="node"><img src="image6.png" alt="response"></div>
+  </div>
+
+  <script>
+    // Calculate each path length and set dasharray/dashoffset so it's "invisible drawn"
+    document.querySelectorAll('.conn').forEach(path => {
+      const len = path.getTotalLength();
+      path.style.strokeDasharray = len;
+      path.style.strokeDashoffset = len;
+    });
+
+    function showNode(id, delay) {
+      setTimeout(() => document.getElementById(id).classList.add('show'), delay);
+    }
+
+    function drawLine(id, delay) {
+      setTimeout(() => {
+        const el = document.getElementById(id);
+        el.style.opacity = '1';
+        el.style.strokeDashoffset = '0';
+      }, delay);
+    }
+
+    // Sequence: node1 → line1 → node2 → line2+line3 → node3 → node4 → line4 → node5 → line5 → node6
+    const t = {
+      node1: 0,
+      line1: 560,
+      node2: 1050,
+      line2: 1600,
+      line3: 1850,
+      node3: 2280,
+      node4: 2580,
+      line4: 3080,
+      node5: 3480,
+      line5: 3930,
+      node6: 4330,
+    };
+
+    ['node1', 'node2', 'node3', 'node4', 'node5', 'node6'].forEach(id => showNode(id, t[id]));
+    ['line1', 'line2', 'line3', 'line4', 'line5'].forEach(id => drawLine(id, t[id]));
+  </script>
+</body>
+
+</html>
