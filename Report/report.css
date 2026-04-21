@@ -1,0 +1,187 @@
+/* ── Reset & Base ─────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --font-mono: 'Space Mono', monospace;
+
+  --color-bg: transparent;
+  --color-border: rgba(226, 232, 240, 0.2);
+  --color-card-bg: rgba(255, 255, 255, 0.05);
+
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-400: #99a1af;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+
+  --shadow-card: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
+
+  /* Animation timing */
+  --header-duration: 0.5s;
+  --header-delay: 0.1s;
+  --kpi-duration: 0.4s;
+  --kpi-base-delay: 0.7s;
+  /* starts after header */
+  --kpi-stagger: 0.09s;
+  --chart-duration: 0.5s;
+  --chart-base-delay: 1.65s;
+  /* after last kpi (0.7 + 8*0.09 + 0.23) */
+  --chart-stagger: 0.15s;
+}
+
+body {
+  background-color: var(--color-bg);
+  font-family: var(--font-mono);
+  min-height: 100vh;
+  padding: 40px;
+}
+
+/* ── Section container ────────────────────────────────────── */
+.report {
+  position: relative;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Header ───────────────────────────────────────────────── */
+.report__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 17px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 27px;
+}
+
+.report__title {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 24px;
+  line-height: 44.8px;
+  letter-spacing: -0.7px;
+  color: var(--color-gray-100);
+  white-space: nowrap;
+}
+
+.report__subtitle {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 22.4px;
+  color: var(--color-gray-400);
+  white-space: nowrap;
+}
+
+.report__run-badge {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+  padding: 8.5px 17px 8.9px;
+  flex-shrink: 0;
+}
+
+.report__run-badge span {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 22.4px;
+  color: var(--color-slate-200);
+  white-space: nowrap;
+}
+
+/* ── KPI row ──────────────────────────────────────────────── */
+.report__kpis {
+  display: flex;
+  gap: 16px;
+  height: 80px;
+  margin-bottom: 16px;
+}
+
+.kpi {
+  flex: 1 0 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 17px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+}
+
+.kpi__label {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 10.2px;
+  line-height: 17.92px;
+  letter-spacing: 0.56px;
+  text-transform: uppercase;
+  color: var(--color-gray-200);
+}
+
+.kpi__value {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 32px;
+  color: var(--color-slate-100);
+}
+
+/* ── Charts row ───────────────────────────────────────────── */
+.report__charts {
+  display: flex;
+  gap: 24px;
+  height: 378px;
+}
+
+.chart {
+  flex: 1 0 0;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+/* ── Animations ───────────────────────────────────────────── */
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header */
+.animate-header {
+  opacity: 0;
+  animation: fade-slide-in var(--header-duration) ease-out forwards;
+  animation-delay: var(--header-delay);
+}
+
+/* KPI cards — sequential stagger */
+.animate-kpi {
+  opacity: 0;
+  animation: fade-slide-in var(--kpi-duration) ease-out forwards;
+  animation-delay: calc(var(--kpi-base-delay) + var(--kpi-index) * var(--kpi-stagger));
+}
+
+/* Chart frames — after last KPI */
+.animate-chart {
+  opacity: 0;
+  animation: fade-slide-in var(--chart-duration) ease-out forwards;
+  animation-delay: calc(var(--chart-base-delay) + var(--chart-index) * var(--chart-stagger));
+}
