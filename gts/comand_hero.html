@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Structure Assembly — Flat Particle Simulation</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #timer {
+      position: fixed;
+      top: 20px;
+      right: 24px;
+      z-index: 10;
+      font-family: monospace;
+      font-size: 14px;
+      color: rgba(0, 0, 0, 0.3);
+    }
+
+    #labels-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 5;
+      overflow: hidden;
+    }
+
+    .label-pill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      padding: 4px 10px;
+      border: 1px solid rgba(47, 216, 254, 0.761);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.3);
+      color: rgba(2, 200, 255, 0.8);
+      font-family: monospace;
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(4px);
+      opacity: 0;
+      transition: opacity 0.5s;
+      will-change: transform, opacity;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+    }
+
+    .label-pill.visible {
+      opacity: 1;
+    }
+
+    #controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      z-index: 10;
+    }
+
+    #controls button {
+      padding: 8px 20px;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      background: rgba(255, 255, 255, 0.8);
+      color: #333;
+      font-family: monospace;
+      font-size: 13px;
+      cursor: pointer;
+      border-radius: 4px;
+      backdrop-filter: blur(6px);
+      transition: all 0.2s;
+    }
+
+    #controls button:hover {
+      background: #f0f0f0;
+      border-color: rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="labels-container"></div>
+  <div id="timer">0.00s</div>
+  <div id="controls">
+    <button id="btnPlay">▶ Replay</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+
+    // ═══════════════════════════════════════════════════════════════
+    // CONFIG — Tuned for White Background / Assembly
+    // ═══════════════════════════════════════════════════════════════
+    const CONFIG = {
+      ASSEMBLY_DURATION: 3.5, // How fast they gather
+      SETTLE_DURATION: 2.0,   // How long they settle into breathing
+      TOTAL_FADE_DURATION: 2.5,
+
+      MAX_PARTICLES: 1200,
+      PARTICLE_SIZE: 3.5,
+
+      // Grid
+      GRID_COLS: 25,
+      GRID_ROWS: 23,
+      GRID_SPACING: 7,
+
+      // Initial scatter
+      SCATTER_RANGE: 150,
+
+      // Colors (Darker for white background)
+      COLOR_PRIMARY: new THREE.Color(0x00D4FF),
+      COLOR_SECONDARY: new THREE.Color(0x4EB3E5),
+
+      // Connections
+      LINE_MAX_DISTANCE: 70,
+      LINE_OPACITY: 0.6,
+
+      // Breathing
+      ORDER_BREATHE_SPEED: 1.2,
+      ORDER_BREATHE_SIZE: 4.0,
+      ORDER_BREATHE_OPACITY: 0.15,
+      ORDER_WAVE_SPEED: 0.8,
+      ORDER_WAVE_SCALE: 0.012,
+
+      // Camera
+      CAM_DISTANCE: 420,
+      CAM_FOV: 45,
+
+      // Rotation
+      ROTATION_SPEED: 0.05,
+
+      // Flash Squares
+      GRID_FLASH_COLOR: new THREE.Color(0x1DD6FF),
+      GRID_FLASH_RATE: 0.15,
+      GRID_FLASH_MAX_ALPHA: 0.2,
+      GRID_FLASH_FADE_IN: 0.85,
+      GRID_FLASH_HOLD: 0.20,
+      GRID_FLASH_FADE_OUT: 0.90,
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    // Setup
+    // ═══════════════════════════════════════════════════════════════
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0xffffff, 1);
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+
+    const aspect = window.innerWidth / window.innerHeight;
+    const frustumSize = CONFIG.CAM_DISTANCE; // Use distance as scale reference
+    const camera = new THREE.OrthographicCamera(
+      frustumSize * aspect / -2, frustumSize * aspect / 2,
+      frustumSize / 2, frustumSize / -2,
+      1, 2000
+    );
+    // Positioned on Z axis looking at the XY plane center
+    camera.position.set(0, 0, 500);
+    camera.lookAt(0, 0, 0);
+
+    const worldGroup = new THREE.Group();
+    scene.add(worldGroup);
+
+    // ═══════════════════════════════════════════════════════════════
+    // Grid cell flash geometry
+    // ═══════════════════════════════════════════════════════════════
+    const FLASH_CELLS_COUNT = (CONFIG.GRID_COLS - 1) * (CONFIG.GRID_ROWS - 1);
+    const flashCellAlphas = new Float32Array(FLASH_CELLS_COUNT * 6);
+    const flashCellPosBuf = new Float32Array(FLASH_CELLS_COUNT * 6 * 3);
+
+    {
+      let fi = 0;
+      for (let r = 0; r < CONFIG.GRID_ROWS - 1; r++) {
+        for (let c = 0; c < CONFIG.GRID_COLS - 1; c++) {
+          const x0 = (c - (CONFIG.GRID_COLS - 1) / 2) * CONFIG.GRID_SPACING;
+          const y0 = (r - (CONFIG.GRID_ROWS - 1) / 2) * CONFIG.GRID_SPACING;
+          const x1 = x0 + CONFIG.GRID_SPACING;
+          const y1 = y0 + CONFIG.GRID_SPACING;
+          flashCellPosBuf[fi++] = x0; flashCellPosBuf[fi++] = y0; flashCellPosBuf[fi++] = 0;
+          flashCellPosBuf[fi++] = x1; flashCellPosBuf[fi++] = y0; flashCellPosBuf[fi++] = 0;
+          flashCellPosBuf[fi++] = x1; flashCellPosBuf[fi++] = y1; flashCellPosBuf[fi++] = 0;
+          flashCellPosBuf[fi++] = x0; flashCellPosBuf[fi++] = y0; flashCellPosBuf[fi++] = 0;
+          flashCellPosBuf[fi++] = x1; flashCellPosBuf[fi++] = y1; flashCellPosBuf[fi++] = 0;
+          flashCellPosBuf[fi++] = x0; flashCellPosBuf[fi++] = y1; flashCellPosBuf[fi++] = 0;
+        }
+      }
+    }
+
+    const flashCellGeom = new THREE.BufferGeometry();
+    flashCellGeom.setAttribute('position', new THREE.BufferAttribute(flashCellPosBuf, 3));
+    flashCellGeom.setAttribute('alpha', new THREE.BufferAttribute(flashCellAlphas, 1));
+
+    const flashCellMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.NormalBlending,
+      side: THREE.DoubleSide,
+      uniforms: { uColor: { value: CONFIG.GRID_FLASH_COLOR } },
+      vertexShader: `
+        attribute float alpha;
+        varying float vAlpha;
+        void main() {
+          vAlpha = alpha;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        varying float vAlpha;
+        void main() {
+          gl_FragColor = vec4(uColor, vAlpha);
+        }
+      `,
+    });
+
+    const flashCellMesh = new THREE.Mesh(flashCellGeom, flashCellMat);
+    worldGroup.add(flashCellMesh);
+
+    // Flash cell per-cell state
+    const flashCells = Array.from({ length: FLASH_CELLS_COUNT }, () => ({
+      alpha: 0,
+      phase: 'off',
+      timer: Math.random() * (1 / CONFIG.GRID_FLASH_RATE),
+    }));
+
+    // Grid positions
+    const gridPositions = [];
+    for (let r = 0; r < CONFIG.GRID_ROWS; r++) {
+      for (let c = 0; c < CONFIG.GRID_COLS; c++) {
+        gridPositions.push({
+          x: (c - (CONFIG.GRID_COLS - 1) / 2) * CONFIG.GRID_SPACING,
+          y: (r - (CONFIG.GRID_ROWS - 1) / 2) * CONFIG.GRID_SPACING,
+          z: 0,
+        });
+      }
+    }
+    const shuffledGrid = [...gridPositions];
+    for (let i = shuffledGrid.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffledGrid[i], shuffledGrid[j]] = [shuffledGrid[j], shuffledGrid[i]];
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Particle Geometry
+    // ═══════════════════════════════════════════════════════════════
+    const MAX = Math.min(CONFIG.MAX_PARTICLES, shuffledGrid.length);
+    const pointPositions = new Float32Array(MAX * 3);
+    const pointColors = new Float32Array(MAX * 4);
+    const pointSizes = new Float32Array(MAX);
+
+    const pointGeometry = new THREE.BufferGeometry();
+    pointGeometry.setAttribute('position', new THREE.BufferAttribute(pointPositions, 3));
+    pointGeometry.setAttribute('color', new THREE.BufferAttribute(pointColors, 4));
+    pointGeometry.setAttribute('size', new THREE.BufferAttribute(pointSizes, 1));
+
+    const pointMaterial = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.NormalBlending,
+      uniforms: {
+        uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
+      },
+      vertexShader: `
+        attribute float size;
+        attribute vec4 color;
+        varying vec4 vColor;
+        uniform float uPixelRatio;
+        void main() {
+          vColor = color;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = size * uPixelRatio * (300.0 / -mvPosition.z);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec4 vColor;
+        void main() {
+          vec2 center = gl_PointCoord - 0.5;
+          float dist = length(center);
+          if (dist > 0.5) discard;
+          float glow = 1.0 - smoothstep(0.0, 0.5, dist);
+          glow = pow(glow, 1.5);
+          gl_FragColor = vec4(vColor.rgb, vColor.a * glow);
+        }
+      `,
+    });
+
+    const pointsMesh = new THREE.Points(pointGeometry, pointMaterial);
+    worldGroup.add(pointsMesh);
+
+    // Lines
+    const maxLines = MAX * 4;
+    const linePositions = new Float32Array(maxLines * 2 * 3);
+    const lineColors = new Float32Array(maxLines * 2 * 4);
+    const lineGeometry = new THREE.BufferGeometry();
+    lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+    lineGeometry.setAttribute('color', new THREE.BufferAttribute(lineColors, 4));
+
+    const lineMaterial = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.NormalBlending,
+      vertexShader: `
+        attribute vec4 color;
+        varying vec4 vColor;
+        void main() {
+          vColor = color;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec4 vColor;
+        void main() {
+          gl_FragColor = vColor;
+        }
+      `,
+    });
+
+    const linesMesh = new THREE.LineSegments(lineGeometry, lineMaterial);
+    worldGroup.add(linesMesh);
+
+    // ═══════════════════════════════════════════════════════════════
+    // Particles Array
+    // ═══════════════════════════════════════════════════════════════
+    const particles = [];
+    for (let i = 0; i < MAX; i++) {
+      const target = shuffledGrid[i];
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.random() * CONFIG.SCATTER_RANGE;
+      particles.push({
+        startX: target.x + Math.cos(angle) * r,
+        startY: target.y + Math.sin(angle) * r,
+        startZ: (Math.random() - 0.5) * (CONFIG.SCATTER_RANGE * 0.2), // Reduced Z depth for assembly
+        targetX: target.x,
+        targetY: target.y,
+        targetZ: target.z,
+        x: 0, y: 0, z: 0,
+        colorMix: Math.random(),
+        pulseOffset: Math.random() * Math.PI * 2,
+        delay: Math.random() * 0.8,
+      });
+    }
+
+    let animTime = 0;
+    let isPlaying = true;
+    const timerEl = document.getElementById('timer');
+
+    // Labels
+    const NUM_LABELS = 40;
+    const labelElements = [];
+    const labelIndices = [];
+    const labelsContainer = document.getElementById('labels-container');
+    const labelPrefixes = ['DATA', 'CORE', 'NODE', 'UNIT'];
+
+    for (let i = 0; i < NUM_LABELS; i++) {
+      const el = document.createElement('div');
+      el.className = 'label-pill';
+      const pre = labelPrefixes[Math.floor(Math.random() * labelPrefixes.length)];
+      const hex = Math.random().toString(16).substring(2, 6).toUpperCase();
+      el.textContent = `${pre}-${hex}`;
+      labelsContainer.appendChild(el);
+      labelElements.push(el);
+      labelIndices.push(Math.floor(Math.random() * MAX));
+    }
+
+    function easeInOutQuart(t) {
+      return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
+    }
+
+    function reset() {
+      animTime = 0;
+      isPlaying = true;
+      worldGroup.rotation.z = 0;
+    }
+
+    const tmpColor = new THREE.Color();
+    const tmpLabelVector = new THREE.Vector3();
+    let lastTime = performance.now();
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+
+      if (!isPlaying) return;
+
+      animTime += dt;
+      timerEl.textContent = animTime.toFixed(2) + 's';
+
+      const globalFade = Math.min(animTime / CONFIG.TOTAL_FADE_DURATION, 1.0);
+
+      for (let i = 0; i < MAX; i++) {
+        const p = particles[i];
+
+        // Progress of assembly for this specific particle
+        const localT = Math.max(0, Math.min((animTime - p.delay) / CONFIG.ASSEMBLY_DURATION, 1.0));
+        const easedT = easeInOutQuart(localT);
+
+        const baseX = p.startX + (p.targetX - p.startX) * easedT;
+        const baseY = p.startY + (p.targetY - p.startY) * easedT;
+        const baseZ = p.startZ + (p.targetZ - p.startZ) * easedT;
+
+        // Breathing/Drift once close to target
+        const settleT = Math.max(0, Math.min((animTime - p.delay - CONFIG.ASSEMBLY_DURATION * 0.8) / CONFIG.SETTLE_DURATION, 1.0));
+        const wave = Math.sin(animTime * CONFIG.ORDER_WAVE_SPEED + p.targetX * CONFIG.ORDER_WAVE_SCALE + p.targetY * CONFIG.ORDER_WAVE_SCALE * 0.7);
+        const driftX = settleT * wave * 2.5;
+        const driftY = settleT * Math.cos(animTime * 0.7 + p.pulseOffset) * 2.0;
+
+        p.x = baseX + driftX;
+        p.y = baseY + driftY;
+        p.z = baseZ + Math.sin(animTime + p.pulseOffset) * 0.2 * settleT;
+
+        const idx3 = i * 3;
+        const idx4 = i * 4;
+        pointPositions[idx3] = p.x;
+        pointPositions[idx3 + 1] = p.y;
+        pointPositions[idx3 + 2] = p.z;
+
+        tmpColor.copy(CONFIG.COLOR_PRIMARY).lerp(CONFIG.COLOR_SECONDARY, p.colorMix);
+        pointColors[idx4] = tmpColor.r;
+        pointColors[idx4 + 1] = tmpColor.g;
+        pointColors[idx4 + 2] = tmpColor.b;
+
+        // Fade in from transparent + extra glow when settled
+        const opacity = globalFade * (0.6 + 0.4 * easedT);
+        pointColors[idx4 + 3] = opacity;
+
+        const sizeBreathe = Math.sin(animTime * CONFIG.ORDER_BREATHE_SPEED + p.pulseOffset);
+        // Size scale adjustment for Orthographic view (no perspective scaling)
+        pointSizes[i] = CONFIG.PARTICLE_SIZE * (0.9 + 0.2 * sizeBreathe * settleT) * 1.5;
+      }
+      pointGeometry.attributes.position.needsUpdate = true;
+      pointGeometry.attributes.color.needsUpdate = true;
+      pointGeometry.attributes.size.needsUpdate = true;
+
+      // Lines update
+      let lineVertexCount = 0;
+      const lineOpacityBase = CONFIG.LINE_OPACITY * globalFade;
+      const maxDistSq = CONFIG.LINE_MAX_DISTANCE * CONFIG.LINE_MAX_DISTANCE;
+
+      for (let i = 0; i < MAX && lineVertexCount < maxLines * 2; i += 4) {
+        const pi = particles[i];
+        for (let j = i + 1; j < MAX && lineVertexCount < maxLines * 2; j += 9) {
+          const pj = particles[j];
+          const dx = pi.x - pj.x;
+          const dy = pi.y - pj.y;
+          const dSq = dx * dx + dy * dy;
+          if (dSq < maxDistSq) {
+            const alpha = lineOpacityBase * (1 - Math.sqrt(dSq) / CONFIG.LINE_MAX_DISTANCE);
+
+            const vi = lineVertexCount * 3;
+            const ci = lineVertexCount * 4;
+            linePositions[vi] = pi.x; linePositions[vi + 1] = pi.y; linePositions[vi + 2] = pi.z;
+            lineColors[ci] = 0.0; lineColors[ci + 1] = 0.83; lineColors[ci + 2] = 1.0; lineColors[ci + 3] = alpha;
+            lineVertexCount++;
+
+            const vi2 = lineVertexCount * 3;
+            const ci2 = lineVertexCount * 4;
+            linePositions[vi2] = pj.x; linePositions[vi2 + 1] = pj.y; linePositions[vi2 + 2] = pj.z;
+            lineColors[ci2] = 0.0; lineColors[ci2 + 1] = 0.83; lineColors[ci2 + 2] = 1.0; lineColors[ci2 + 3] = alpha;
+            lineVertexCount++;
+          }
+        }
+      }
+      lineGeometry.attributes.position.needsUpdate = true;
+      lineGeometry.attributes.color.needsUpdate = true;
+      lineGeometry.setDrawRange(0, lineVertexCount);
+
+      // ── Grid cell flash ──
+      if (animTime > 1.0) {
+        for (let i = 0; i < FLASH_CELLS_COUNT; i++) {
+          const cell = flashCells[i];
+          cell.timer -= dt;
+          if (cell.phase === 'off') {
+            if (cell.timer <= 0) {
+              cell.phase = 'fadein';
+              cell.timer = CONFIG.GRID_FLASH_FADE_IN;
+            }
+          } else if (cell.phase === 'fadein') {
+            cell.alpha = Math.max(0, 1 - cell.timer / CONFIG.GRID_FLASH_FADE_IN);
+            if (cell.timer <= 0) { cell.alpha = 1; cell.phase = 'hold'; cell.timer = CONFIG.GRID_FLASH_HOLD; }
+          } else if (cell.phase === 'hold') {
+            cell.alpha = 1;
+            if (cell.timer <= 0) { cell.phase = 'fadeout'; cell.timer = CONFIG.GRID_FLASH_FADE_OUT; }
+          } else if (cell.phase === 'fadeout') {
+            cell.alpha = Math.max(0, cell.timer / CONFIG.GRID_FLASH_FADE_OUT);
+            if (cell.timer <= 0) {
+              cell.alpha = 0; cell.phase = 'off';
+              cell.timer = (0.3 + Math.random() * 2.0) / Math.max(0.01, CONFIG.GRID_FLASH_RATE);
+            }
+          }
+          const a = cell.alpha * CONFIG.GRID_FLASH_MAX_ALPHA * globalFade;
+          const vBase = i * 6;
+          for (let v = 0; v < 6; v++) flashCellAlphas[vBase + v] = a;
+        }
+        flashCellGeom.attributes.alpha.needsUpdate = true;
+      }
+
+      worldGroup.rotation.z += CONFIG.ROTATION_SPEED * dt;
+
+      // Labels update
+      for (let i = 0; i < NUM_LABELS; i++) {
+        const p = particles[labelIndices[i]];
+        tmpLabelVector.set(p.x, p.y, p.z);
+        tmpLabelVector.applyMatrix4(worldGroup.matrixWorld);
+        tmpLabelVector.project(camera);
+
+        const x = (tmpLabelVector.x * 0.5 + 0.5) * window.innerWidth;
+        const y = -(tmpLabelVector.y * 0.5 - 0.5) * window.innerHeight;
+        labelElements[i].style.transform = `translate(-50%, -50%) translate(${x}px, ${y - 22}px)`;
+
+        if (animTime > 1.2 && globalFade > 0.4) labelElements[i].classList.add('visible');
+        else labelElements[i].classList.remove('visible');
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    document.getElementById('btnPlay').addEventListener('click', () => reset());
+
+    window.addEventListener('resize', () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      renderer.setSize(w, h);
+
+      const aspect = w / h;
+      const frustumSize = CONFIG.CAM_DISTANCE;
+      camera.left = -frustumSize * aspect / 2;
+      camera.right = frustumSize * aspect / 2;
+      camera.top = frustumSize / 2;
+      camera.bottom = -frustumSize / 2;
+      camera.updateProjectionMatrix();
+    });
+
+    animate(performance.now());
+  </script>
+</body>
+
+</html>
