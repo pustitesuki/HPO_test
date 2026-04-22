@@ -17,13 +17,23 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: transparent;
+      background: transparent !important;
+    }
+
+    #scene-container {
+      position: relative;
+      width: 1200px;
+      height: 800px;
+      margin: 50px auto;
+      background: transparent !important;
+      overflow: hidden;
     }
 
     canvas {
       display: block;
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
+      background: transparent !important;
     }
 
     #timer {
@@ -40,11 +50,10 @@
       position: absolute;
       top: 0;
       left: 0;
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
       pointer-events: none;
       z-index: 5;
-      overflow: hidden;
     }
 
     .label-pill {
@@ -93,20 +102,13 @@
       backdrop-filter: blur(6px);
       transition: all 0.2s;
     }
-
-    #controls button:hover {
-      background: #f0f0f0;
-      border-color: rgba(0, 0, 0, 0.2);
-    }
   </style>
 </head>
 
 <body>
 
-  <div id="labels-container"></div>
-  <div id="timer">0.00s</div>
-  <div id="controls">
-    <button id="btnPlay">▶ Replay</button>
+  <div id="scene-container">
+    <div id="labels-container"></div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -126,7 +128,7 @@
       // Grid
       GRID_COLS: 25,
       GRID_ROWS: 23,
-      GRID_SPACING: 7,
+      GRID_SPACING: 10,
 
       // Initial scatter
       SCATTER_RANGE: 150,
@@ -165,15 +167,19 @@
     // ═══════════════════════════════════════════════════════════════
     // Setup
     // ═══════════════════════════════════════════════════════════════
+    const container = document.getElementById('scene-container');
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(1200, 800);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0xffffff, 1);
-    document.body.appendChild(renderer.domElement);
+    renderer.setClearColor(0x000000, 0);
+    renderer.setClearAlpha(0);
+    renderer.domElement.style.background = 'transparent';
+    container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
+    scene.background = null;
 
-    const aspect = window.innerWidth / window.innerHeight;
+    const aspect = 1200 / 800;
     const frustumSize = CONFIG.CAM_DISTANCE; // Use distance as scale reference
     const camera = new THREE.OrthographicCamera(
       frustumSize * aspect / -2, frustumSize * aspect / 2,
@@ -369,7 +375,7 @@
 
     let animTime = 0;
     let isPlaying = true;
-    const timerEl = document.getElementById('timer');
+    // Animation control
 
     // Labels
     const NUM_LABELS = 40;
@@ -411,7 +417,6 @@
       if (!isPlaying) return;
 
       animTime += dt;
-      timerEl.textContent = animTime.toFixed(2) + 's';
 
       const globalFade = Math.min(animTime / CONFIG.TOTAL_FADE_DURATION, 1.0);
 
@@ -531,8 +536,8 @@
         tmpLabelVector.applyMatrix4(worldGroup.matrixWorld);
         tmpLabelVector.project(camera);
 
-        const x = (tmpLabelVector.x * 0.5 + 0.5) * window.innerWidth;
-        const y = -(tmpLabelVector.y * 0.5 - 0.5) * window.innerHeight;
+        const x = (tmpLabelVector.x * 0.5 + 0.5) * 1200;
+        const y = -(tmpLabelVector.y * 0.5 - 0.5) * 800;
         labelElements[i].style.transform = `translate(-50%, -50%) translate(${x}px, ${y - 22}px)`;
 
         if (animTime > 1.2 && globalFade > 0.4) labelElements[i].classList.add('visible');
@@ -542,21 +547,9 @@
       renderer.render(scene, camera);
     }
 
-    document.getElementById('btnPlay').addEventListener('click', () => reset());
+    // Auto-start via animate call below
 
-    window.addEventListener('resize', () => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      renderer.setSize(w, h);
-
-      const aspect = w / h;
-      const frustumSize = CONFIG.CAM_DISTANCE;
-      camera.left = -frustumSize * aspect / 2;
-      camera.right = frustumSize * aspect / 2;
-      camera.top = frustumSize / 2;
-      camera.bottom = -frustumSize / 2;
-      camera.updateProjectionMatrix();
-    });
+    // Resize listener disabled for fixed size
 
     animate(performance.now());
   </script>
