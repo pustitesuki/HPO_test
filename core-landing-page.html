@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CORE — Ground Truth Systems</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-void: #ffffff;
+  --bg-base: #ffffff;
+  --bg-raised: #ffffff;
+  --bg-surface: #f9fafb;
+  --bg-surface-hover: #f3f4f6;
+  --accent: #0066ff;
+  --accent-dim: rgba(0, 102, 255, 0.08);
+  --accent-glow: rgba(0, 102, 255, 0.04);
+  --accent-text: #0052cc;
+  --mint: #00d7ff;
+  --mint-dim: rgba(0, 215, 255, 0.1);
+  --mint-glow: rgba(0, 215, 255, 0.05);
+  --mint-text: #00b0d1;
+  --red-soft: #ff4d4d;
+  --red-dim: rgba(255, 77, 77, 0.08);
+  --amber: #ff9f1c;
+  --text-1: #050505;
+  --text-2: #51565a;
+  --text-3: #79899b;
+  --border-1: rgba(0, 0, 0, 0.08);
+  --border-2: rgba(0, 0, 0, 0.12);
+  --border-3: rgba(0, 0, 0, 0.18);
+  --f-display: 'Space Grotesk', system-ui, sans-serif;
+  --f-body: 'Space Grotesk', system-ui, sans-serif;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--f-body);
+  background: var(--bg-void);
+  color: var(--text-1);
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::after { content: none; }
+
+/* ======= NAV ======= */
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 56px;
+  height: 64px;
+  background: rgba(255,255,255,0.8);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.nav-brand {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.nav-brand b { color: var(--accent); font-weight: 700; }
+
+.nav-links { display: flex; gap: 36px; align-items: center; }
+.nav-links a {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-3);
+  text-decoration: none;
+  letter-spacing: 0.3px;
+  transition: color 0.25s;
+}
+.nav-links a:hover { color: var(--text-1); }
+
+.nav-cta {
+  display: inline-block;
+  padding: 9px 22px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bg-void) !important;
+  background: var(--accent);
+  border-radius: 6px;
+  text-decoration: none;
+  transition: all 0.3s var(--ease);
+}
+.nav-cta:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(0,102,255,0.2); }
+
+/* ======= HERO ======= */
+.hero {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 160px 48px 100px;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -100px;
+  left: 50%; transform: translateX(-50%);
+  width: 900px; height: 900px;
+  background: radial-gradient(ellipse, rgba(0, 102, 255, 0.04) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.hero-pips {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.hero-pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 18px;
+  border: 1px solid var(--border-2);
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0;
+  animation: riseIn 0.7s var(--ease) 0.15s forwards;
+}
+
+.hero-pip::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.hero-pip.deploy {
+  color: var(--mint);
+  border-color: var(--mint-dim);
+  animation-delay: 0.25s;
+}
+
+.hero-pip.deploy::before {
+  background: var(--mint);
+  box-shadow: 0 0 8px var(--mint);
+}
+
+.hero h1 {
+  font-family: var(--f-display);
+  font-size: clamp(52px, 7.5vw, 92px);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -2px;
+  max-width: 880px;
+  margin-bottom: 24px;
+  opacity: 0;
+  animation: riseIn 0.8s var(--ease) 0.3s forwards;
+}
+
+.hero h1 i { font-style: italic; color: var(--accent); }
+
+.hero-acronym {
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 1.5px;
+  color: var(--text-3);
+  margin-bottom: 48px;
+  opacity: 0;
+  animation: riseIn 0.7s var(--ease) 0.45s forwards;
+}
+
+.hero-sub {
+  max-width: 640px;
+  margin-bottom: 56px;
+  opacity: 0;
+  animation: riseIn 0.7s var(--ease) 0.55s forwards;
+}
+
+.hero-sub p {
+  font-size: 22px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.hero-buttons {
+  display: flex; gap: 14px;
+  opacity: 0;
+  animation: riseIn 0.7s var(--ease) 0.7s forwards;
+}
+
+.btn {
+  display: inline-block;
+  padding: 15px 36px;
+  font-family: var(--f-body);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: all 0.3s var(--ease);
+  cursor: pointer;
+  border: none;
+}
+
+.btn-accent {
+  background: var(--text-1);
+  color: #fff;
+  border: 1px solid var(--text-1);
+}
+.btn-accent:hover { 
+  background: var(--text-2); 
+  border-color: var(--text-2);
+  transform: translateY(-2px); 
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid var(--border-2);
+}
+.btn-ghost:hover { 
+  border-color: var(--text-1); 
+  color: var(--text-1); 
+  background: var(--bg-surface);
+}
+
+/* ======= SECTIONS ======= */
+.wrap {
+  position: relative;
+  z-index: 1;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 48px;
+}
+
+.sect { padding: 120px 0; }
+.sect-border { border-top: 1px solid var(--border-1); }
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 20px;
+}
+
+.sect-h {
+  font-family: var(--f-display);
+  font-size: clamp(34px, 4.5vw, 56px);
+  font-weight: 400;
+  line-height: 1.15;
+  max-width: 720px;
+  margin-bottom: 20px;
+}
+
+.sect-h i { font-style: italic; color: var(--accent); }
+
+.sect-p {
+  font-size: 17px;
+  font-weight: 300;
+  color: var(--text-2);
+  max-width: 620px;
+  line-height: 1.75;
+  margin-bottom: 64px;
+}
+
+/* ======= PROBLEM ======= */
+.problem-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.problem-card {
+  background: var(--bg-void);
+  border: 1px solid var(--border-1);
+  border-radius: 16px;
+  padding: 40px;
+  transition: all 0.5s var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+
+.problem-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--red-soft), transparent);
+  opacity: 0.4;
+}
+
+.problem-card:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-2);
+  transform: translateY(-6px);
+}
+
+.problem-num {
+  font-family: var(--f-display);
+  font-size: 52px;
+  font-weight: 700;
+  color: var(--red-soft);
+  opacity: 0.15;
+  line-height: 1;
+  margin-bottom: 16px;
+}
+
+.problem-card h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.problem-card p {
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.75;
+}
+
+.problem-solve {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-1);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-text);
+  line-height: 1.6;
+}
+
+/* ======= STAT STRIP ======= */
+.stat-strip {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border-1);
+  border-top: 1px solid var(--border-1);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.stat-cell {
+  background: var(--bg-void);
+  text-align: center;
+  padding: 48px 32px;
+}
+
+.stat-num {
+  font-family: var(--f-display);
+  font-size: clamp(36px, 4vw, 56px);
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.stat-label {
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.stat-source {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 8px;
+}
+
+/* ======= ARCHITECTURE STRIP ======= */
+.arch-strip {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding: 88px 48px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-1);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.arch-strip p {
+  font-family: var(--f-display);
+  font-size: clamp(28px, 3.8vw, 42px);
+  font-weight: 400;
+  line-height: 1.3;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.arch-strip i { font-style: italic; color: var(--accent); }
+
+/* ======= HOW IT WORKS ======= */
+.how-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+  padding: 56px 0;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.how-row:last-child { border-bottom: none; }
+.how-row.reverse { direction: rtl; }
+.how-row.reverse > * { direction: ltr; }
+
+.how-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: 5px 14px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 100px;
+  background: var(--accent-glow);
+  margin-bottom: 18px;
+}
+
+.how-row h3 {
+  font-family: var(--f-display);
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.25;
+  margin-bottom: 16px;
+}
+
+.how-row > div > p {
+  font-size: 15px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.8;
+}
+
+.how-vis {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 16px;
+  min-height: 300px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ======= CAPABILITIES ======= */
+.sec-highlight {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 16px;
+  padding: 48px 44px;
+  margin-bottom: 48px;
+  position: relative;
+  overflow: hidden;
+}
+
+.sec-highlight::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--mint), transparent 70%);
+}
+
+.sec-highlight .how-tag { margin-bottom: 16px; }
+
+.sec-highlight h3 {
+  font-family: var(--f-display);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1.3;
+  margin-bottom: 16px;
+}
+
+.sec-highlight p {
+  font-size: 15px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.8;
+  max-width: 640px;
+}
+
+.cap-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.cap-card {
+  background: var(--bg-void);
+  border: 1px solid var(--border-1);
+  border-radius: 14px;
+  padding: 32px 28px;
+  transition: all 0.4s var(--ease);
+}
+
+.cap-card:hover {
+  background: var(--bg-surface);
+  border-color: var(--accent);
+  transform: translateY(-5px);
+  box-shadow: 0 16px 32px rgba(0,0,0,0.02);
+}
+
+.cap-icon {
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  background: var(--accent-dim);
+  display: grid;
+  place-items: center;
+  margin-bottom: 20px;
+}
+
+.cap-icon svg { width: 20px; height: 20px; }
+
+.cap-card h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.cap-card p {
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.75;
+}
+
+/* ======= SOLUTIONS ======= */
+.sol-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.sol-card {
+  background: var(--bg-void);
+  border: 1px solid var(--border-1);
+  border-radius: 16px;
+  padding: 44px 36px;
+  transition: all 0.4s var(--ease);
+}
+
+.sol-card:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-2);
+  transform: translateY(-5px);
+  box-shadow: 0 16px 32px rgba(0,0,0,0.02);
+}
+
+.sol-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  border-radius: 100px;
+  margin-bottom: 20px;
+}
+
+.sol-tag.fusion {
+  color: #F0997B;
+  border: 1px solid rgba(240,153,123,0.2);
+  background: rgba(240,153,123,0.06);
+}
+
+.sol-tag.pipeline {
+  color: var(--mint-text);
+  border: 1px solid var(--mint-dim);
+  background: var(--mint-glow);
+}
+
+.sol-card h3 {
+  font-family: var(--f-display);
+  font-size: 24px;
+  font-weight: 400;
+  margin-bottom: 12px;
+}
+
+.sol-card > p {
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.7;
+  margin-bottom: 20px;
+}
+
+.sol-products {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sol-pill {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 16px;
+  border-radius: 100px;
+  border: 1px solid var(--border-2);
+  color: var(--text-3);
+  background: var(--bg-surface);
+}
+
+/* ======= PLATFORM ======= */
+.platform-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 16px;
+  padding: 56px 48px;
+  position: relative;
+  overflow: hidden;
+}
+
+.platform-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent 70%);
+}
+
+.platform-card h3 {
+  font-family: var(--f-display);
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.3;
+  margin-bottom: 16px;
+  max-width: 600px;
+}
+
+.platform-card > p {
+  font-size: 15px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.8;
+  max-width: 640px;
+  margin-bottom: 32px;
+}
+
+.platform-features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.platform-feat h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.platform-feat p {
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.7;
+}
+
+/* ======= CTA ======= */
+.cta-sect {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding: 140px 48px;
+}
+
+.cta-sect::before {
+  content: '';
+  position: absolute;
+  bottom: -200px; left: 50%;
+  transform: translateX(-50%);
+  width: 700px; height: 700px;
+  background: radial-gradient(circle, rgba(0, 102, 255, 0.04) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.cta-sect h2 {
+  font-family: var(--f-display);
+  font-size: clamp(40px, 5.5vw, 72px);
+  font-weight: 400;
+  line-height: 1.1;
+  margin-bottom: 20px;
+}
+
+.cta-sect h2 i { font-style: italic; color: var(--accent); }
+
+.cta-sect p {
+  font-size: 17px;
+  font-weight: 300;
+  color: var(--text-2);
+  max-width: 520px;
+  margin: 0 auto 44px;
+  line-height: 1.7;
+}
+
+/* ======= FOOTER ======= */
+.foot {
+  position: relative;
+  z-index: 1;
+  padding: 36px 56px;
+  border-top: 1px solid var(--border-1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.foot p, .foot a {
+  font-size: 13px;
+  color: var(--text-3);
+  text-decoration: none;
+  font-weight: 400;
+}
+.foot a:hover { color: var(--accent-text); }
+
+/* ======= ANIMATIONS ======= */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(36px);
+  transition: all 0.85s var(--ease);
+}
+
+.reveal.vis {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-stagger > .reveal:nth-child(1) { transition-delay: 0s; }
+.reveal-stagger > .reveal:nth-child(2) { transition-delay: 0.1s; }
+.reveal-stagger > .reveal:nth-child(3) { transition-delay: 0.2s; }
+.reveal-stagger > .reveal:nth-child(4) { transition-delay: 0.3s; }
+.reveal-stagger > .reveal:nth-child(5) { transition-delay: 0.4s; }
+.reveal-stagger > .reveal:nth-child(6) { transition-delay: 0.5s; }
+
+/* Dot visuals */
+.gd {
+  position: absolute;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  animation: dotPulse 4s ease-in-out infinite;
+}
+.gd.mint { background: var(--mint); }
+.gd.amber { background: var(--amber); }
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 0.08; transform: scale(0.8); }
+  50% { opacity: 0.45; transform: scale(1.4); }
+}
+
+.conn {
+  position: absolute;
+  height: 1px;
+  background: var(--accent);
+  opacity: 0.08;
+  transform-origin: left center;
+}
+
+/* ======= RESPONSIVE ======= */
+@media (max-width: 900px) {
+  .nav { padding: 0 24px; }
+  .nav-links a:not(.nav-cta) { display: none; }
+  .wrap { padding: 0 24px; }
+  .hero { padding: 140px 24px 80px; }
+  .problem-grid, .cap-grid, .sol-grid, .platform-features { grid-template-columns: 1fr; }
+  .how-row, .how-row.reverse { grid-template-columns: 1fr; direction: ltr; }
+  .how-vis { min-height: 200px; }
+  .stat-strip { grid-template-columns: 1fr; }
+  .hero-buttons { flex-direction: column; width: 100%; max-width: 320px; }
+  .btn { text-align: center; }
+  .arch-strip { padding: 64px 24px; }
+  .cta-sect { padding: 100px 24px; }
+  .foot { padding: 28px 24px; flex-direction: column; gap: 12px; }
+  .platform-card { padding: 36px 24px; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-brand">Ground Truth <b>Systems</b></div>
+  <div class="nav-links">
+    <a href="#problem">The problem</a>
+    <a href="#how">How it works</a>
+    <a href="#capabilities">Capabilities</a>
+    <a href="#solutions">Solutions</a>
+    <a href="#contact" class="nav-cta">Request demo</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-pips">
+    <div class="hero-pip">Introducing CORE</div>
+    <div class="hero-pip deploy">Deploys in your cloud</div>
+  </div>
+  <h1>Verifiable clinical reasoning. <i>At scale.</i></h1>
+  <p class="hero-acronym">Clinical Ontology and Reasoning Engine</p>
+  <div class="hero-sub">
+    <p>CORE encodes clinical knowledge into a structured ontology and knowledge graph that AI agents reason against deterministically. Every recommendation traceable. Every decision auditable. Every output defensible.</p>
+  </div>
+  <div class="hero-buttons">
+    <a href="#contact" class="btn btn-accent">Request a demo</a>
+    <a href="#how" class="btn btn-ghost">See how it works</a>
+  </div>
+</header>
+
+<!-- PROBLEM -->
+<section class="sect sect-border" id="problem">
+  <div class="wrap">
+    <p class="eyebrow reveal">The problem</p>
+    <h2 class="sect-h reveal">Healthcare AI has an <i>accuracy</i> problem.</h2>
+    <p class="sect-p reveal">General-purpose AI hallucinates. It generates plausible-sounding clinical outputs that are wrong in ways you can't detect without re-doing the entire analysis yourself. In regulated healthcare, that's not a risk. It's a liability.</p>
+
+    <div class="problem-grid reveal-stagger">
+      <div class="problem-card reveal">
+        <div class="problem-num">01</div>
+        <h3>It hallucinates</h3>
+        <p>General-purpose LLMs produce clinical errors at rates of 58 to 82 percent. They generate confident, well-structured outputs that are factually wrong.</p>
+        <p class="problem-solve">CORE uses deterministic reasoning against structured clinical knowledge. The ontology constrains what the system can conclude.</p>
+      </div>
+      <div class="problem-card reveal">
+        <div class="problem-num">02</div>
+        <h3>It's a black box</h3>
+        <p>You can't trace how the AI reached its conclusion. There's no audit trail, no evidence chain, no way to verify the reasoning or defend it at IMR.</p>
+        <p class="problem-solve">CORE provides a Glass Box: every finding links to source text, every criterion to its guideline section, every decision to a complete evidence chain.</p>
+      </div>
+      <div class="problem-card reveal">
+        <div class="problem-num">03</div>
+        <h3>It doesn't know the rules</h3>
+        <p>LLMs can read medical records but they don't understand clinical practice guidelines, the compounding rules that govern determinations, or the regulatory frameworks that vary by jurisdiction and line of business.</p>
+        <p class="problem-solve">CORE encodes clinical guidelines into a structured knowledge graph with deterministic decision logic. It doesn't interpret the rules. It applies them.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="stat-strip">
+  <div class="stat-cell reveal">
+    <div class="stat-num">100%</div>
+    <div class="stat-label">Neuro-symbolic AI accuracy in peer-reviewed clinical extraction study</div>
+    <div class="stat-source">Nature Communications Medicine, 2025 (Prenosil, Weitzel et al.)</div>
+  </div>
+  <div class="stat-cell reveal">
+    <div class="stat-num">63%</div>
+    <div class="stat-label">GPT-4 alone on the same task, same data, same reports</div>
+    <div class="stat-source">The only difference was adding a structured verification layer</div>
+  </div>
+  <div class="stat-cell reveal">
+    <div class="stat-num">+37pts</div>
+    <div class="stat-label">Accuracy gain from the architecture CORE is built on</div>
+    <div class="stat-source">Neuro-symbolic AI: LLMs read, knowledge graphs verify</div>
+  </div>
+</div>
+
+<!-- ARCHITECTURE STRIP -->
+<div class="arch-strip">
+  <p class="reveal">The LLM <i>reads.</i> The knowledge graph <i>reasons.</i><br>The human <i>decides.</i></p>
+</div>
+
+<!-- HOW IT WORKS -->
+<section class="sect sect-border" id="how">
+  <div class="wrap">
+    <p class="eyebrow reveal">How it works</p>
+    <h2 class="sect-h reveal">Neuro-symbolic AI for <i>clinical</i> reasoning.</h2>
+    <p class="sect-p reveal">CORE combines the reading power of large language models with the reasoning precision of deterministic knowledge graphs. The LLM never makes the clinical determination. It reads. The graph decides.</p>
+
+    <div class="how-row reveal">
+      <div>
+        <span class="how-tag">Layer 1</span>
+        <h3>Clinical ontology and knowledge graph</h3>
+        <p>Clinical guidelines encoded as structured, machine-actionable knowledge. Entity types, relationships, scoping rules, and decision logic. Not retrieved documents. Computable logic. CORE's ontology includes a foundation of standard medical guidelines and terminology alongside specialized regulatory frameworks like ACOEM and California MTUS. The architecture is designed to extend to additional clinical practice guidelines as new verticals and jurisdictions come online.</p>
+      </div>
+      <div class="how-vis" id="vis-ontology"></div>
+    </div>
+
+    <div class="how-row reverse reveal">
+      <div>
+        <span class="how-tag">Layer 2</span>
+        <h3>Clinical AI agents</h3>
+        <p>Specialized agents that work in sequence, each with a defined scope and measurable criteria. One identifies the request type and applicable rules. One reads and indexes the medical documents against the ontology. One extracts every relevant clinical entity. One generates a verified clinical summary. Each agent hands off to the next. Each output is traceable.</p>
+      </div>
+      <div class="how-vis" id="vis-agents"></div>
+    </div>
+
+    <div class="how-row reveal">
+      <div>
+        <span class="how-tag">Layer 3</span>
+        <h3>Traceable clinical outputs</h3>
+        <p>The system produces structured evidence chains, not summaries. Gap analysis with exact citations. Relevance-filtered timelines. Guideline-matched findings. Every conclusion has a verifiable path from the decision back through the knowledge graph to the source medical record. The reviewer evaluates the evidence chain. They don't re-read 400 pages.</p>
+      </div>
+      <div class="how-vis" id="vis-outputs"></div>
+    </div>
+  </div>
+</section>
+
+<!-- CAPABILITIES -->
+<section class="sect sect-border" id="capabilities">
+  <div class="wrap">
+    <p class="eyebrow reveal">Capabilities</p>
+    <h2 class="sect-h reveal">The Glass Box: every decision <i>traceable.</i></h2>
+    <p class="sect-p reveal">Where black-box AI gives you an output and asks you to trust it, CORE gives you the complete evidence chain and lets you verify it.</p>
+
+    <div class="sec-highlight reveal">
+      <span class="how-tag" style="color:var(--mint-text);border-color:var(--mint-dim);background:var(--mint-glow)">Zero data egress</span>
+      <h3>CORE isn't SaaS. It runs inside your walls.</h3>
+      <p>CORE deploys directly into your enterprise cloud infrastructure, VPC, or tenant. Your medical records, proprietary data, and PHI never leave your secure perimeter. No data egress. No third-party processing. No external API calls with patient information. Your environment, your firewall, your control.</p>
+    </div>
+
+    <div class="cap-grid reveal-stagger">
+      <div class="cap-card reveal">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <h3>Glass Box evidence mapping</h3>
+        <p>Every guideline criterion matched to specific findings in the medical record. Source citations with exact page numbers. Highlighted text showing the evidence that supports or contradicts each criterion.</p>
+      </div>
+      <div class="cap-card reveal">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        </div>
+        <h3>Relevance-filtered timeline</h3>
+        <p>Patient history projected onto a chronological axis, filtered to the specific request. If the request is for a lumbar injection, only lumbar-related history is displayed. Gaps in therapy, symptom escalation, treatment progression.</p>
+      </div>
+      <div class="cap-card reveal">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <h3>Gap analysis</h3>
+        <p>Specific gaps between the documented medical record and guideline requirements. Not "conservative therapy may not have been met." Instead: "ACOEM requires 6 weeks PT. Record shows 4 sessions over 3 weeks. Gap: duration not satisfied by 3 weeks."</p>
+      </div>
+      <div class="cap-card reveal">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <h3>Natural language query</h3>
+        <p>Ask questions about the case file in plain language. Responses grounded in the knowledge graph and source documents. If the evidence doesn't exist, the system says so. It doesn't guess.</p>
+      </div>
+      <div class="cap-card reveal">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h3>Clinical summarization</h3>
+        <p>AI-generated summary containing all and only the information relevant to the specific case. Every statement traceable to its source document. Configurable for physician reviewers or publication.</p>
+      </div>
+      <div class="cap-card reveal">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h3>Guideline ingestion</h3>
+        <p>Complex text-based medical guidelines converted into computable logic. ACOEM, MTUS, VA guidelines, state workers' compensation frameworks, and standard clinical practice guidelines. Evidence requirements, contraindications, and therapy durations automatically enforced. Extensible to new guideline sets as your needs grow.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOLUTIONS -->
+<section class="sect sect-border" id="solutions">
+  <div class="wrap">
+    <p class="eyebrow reveal">Solutions</p>
+    <h2 class="sect-h reveal">Ready-to-deploy clinical <i>solutions.</i></h2>
+    <p class="sect-p reveal">CORE powers two types of solutions. Fusion products fuse AI reasoning with human expertise. Pipeline products automate clinical data processing end to end.</p>
+
+    <div class="sol-grid reveal-stagger">
+      <div class="sol-card reveal">
+        <span class="sol-tag fusion">Fusion</span>
+        <h3>AI-augmented human decision support</h3>
+        <p>Fuses AI reasoning with human expertise to deliver trusted, verifiable outcomes at scale. The AI builds the evidence chain. The human makes the determination.</p>
+        <div class="sol-products">
+          <span class="sol-pill">Fusion IMR</span>
+          <span class="sol-pill">Fusion Litigation</span>
+        </div>
+      </div>
+      <div class="sol-card reveal">
+        <span class="sol-tag pipeline">Pipeline</span>
+        <h3>Fully automated agentic workflows</h3>
+        <p>Autonomous agent compositions that process, transform, and structure data at scale. No human in the loop at runtime. Feeds into Fusion applications or delivers standalone output.</p>
+        <div class="sol-products">
+          <span class="sol-pill">Pipeline Extract</span>
+          <span class="sol-pill">Pipeline FHIR</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PLATFORM -->
+<section class="sect sect-border" id="platform">
+  <div class="wrap">
+    <p class="eyebrow reveal">The platform</p>
+    <h2 class="sect-h reveal">Build your own clinical <i>solutions.</i></h2>
+    <p class="sect-p reveal">For sophisticated buyers who need the clinical reasoning platform to compose custom solutions for workflows we haven't productized yet.</p>
+
+    <div class="platform-card reveal">
+      <h3>CORE as a platform</h3>
+      <p>CORE's clinical ontology, knowledge graph, and agent pipeline are available as a platform for organizations that need to build custom clinical solutions. Bring your own workflow. Compose agents against the ontology. Deploy on COMAND. The hard part — encoding clinical knowledge into deterministic, auditable AI — is already done.</p>
+      <div class="platform-features">
+        <div class="platform-feat">
+          <h4>Clinical ontology access</h4>
+          <p>A foundation of standard medical knowledge, established clinical practice guidelines, and specialized regulatory frameworks. Extend with your own guideline sets for new jurisdictions and lines of business.</p>
+        </div>
+        <div class="platform-feat">
+          <h4>Agent composition</h4>
+          <p>Compose custom agent pipelines from CORE's modular clinical agents. Configure for your specific regulatory and workflow requirements.</p>
+        </div>
+        <div class="platform-feat">
+          <h4>Deploys in your cloud</h4>
+          <p>CORE deploys directly into your VPC or tenant. Your PHI never leaves your secure perimeter. Full evaluation, monitoring, and governance infrastructure runs behind your firewall on COMAND.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-sect" id="contact">
+  <h2 class="reveal">Clinical AI you can <i>trust.</i></h2>
+  <p class="reveal">See how CORE transforms unstructured medical records into traceable, auditable, defensible clinical decisions.</p>
+  <a href="mailto:contact@groundtruthsystems.com" class="btn btn-accent reveal">Request a demo</a>
+</section>
+
+<!-- FOOTER -->
+<footer class="foot">
+  <p>&copy; 2026 Ground Truth Systems, Inc.</p>
+  <a href="https://www.groundtruthsystems.com">groundtruthsystems.com</a>
+</footer>
+
+<script>
+const obs = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('vis'); });
+}, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+function buildVis(id, nodeCount, palette) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const w = el.offsetWidth || 400;
+  const h = el.offsetHeight || 260;
+  const pts = [];
+
+  for (let i = 0; i < nodeCount; i++) {
+    const x = 24 + Math.random() * (w - 48);
+    const y = 24 + Math.random() * (h - 48);
+    const d = document.createElement('div');
+    const cls = palette === 'mixed' ? (Math.random() > 0.6 ? ' mint' : Math.random() > 0.5 ? ' amber' : '') : '';
+    d.className = 'gd' + cls;
+    d.style.cssText = `left:${x}px;top:${y}px;animation-delay:${(-Math.random()*4).toFixed(1)}s;animation-duration:${(3+Math.random()*2).toFixed(1)}s`;
+    el.appendChild(d);
+    pts.push({ x: x + 2.5, y: y + 2.5 });
+  }
+
+  for (let i = 0; i < Math.min(pts.length - 1, nodeCount - 2); i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+    const ln = document.createElement('div');
+    ln.className = 'conn';
+    ln.style.cssText = `left:${a.x}px;top:${a.y}px;width:${len}px;transform:rotate(${angle}deg)`;
+    el.appendChild(ln);
+  }
+}
+
+requestAnimationFrame(() => {
+  buildVis('vis-ontology', 18, 'mono');
+  buildVis('vis-agents', 14, 'mixed');
+  buildVis('vis-outputs', 12, 'mono');
+});
+</script>
+
+</body>
+</html>
