@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Clinical Pipeline</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    canvas {
+      display: block;
+      cursor: default;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="c"></canvas>
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    let W, H;
+
+    const resize = () => { W = canvas.width = innerWidth; H = canvas.height = innerHeight; };
+    resize();
+    window.addEventListener('resize', () => { resize(); init(); });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // CONFIG
+    // ═══════════════════════════════════════════════════════════════════
+    const CFG = {
+      // ── Source Nodes ──
+      SRC_COUNT: 300,     // total source nodes
+      NOISE_FRAC: 0.78,    // fraction that are noise (no connection)
+      SRC_R_MIN: 2.5,     // min radius for connected nodes
+      SRC_R_VAR: 4.0,     // radius variance for connected nodes
+      NOISE_R_MIN: 0.5,   // min radius for noise nodes
+      NOISE_R_VAR: 0.2,   // radius variance for noise nodes
+
+      // Source zone (fractions of W / H)
+      SX1: 0.04, SX2: 0.14,
+      SY1: 0.10, SY2: 0.60,
+
+      // Target zone
+      TX: 0.64,                         // target x fraction
+      TY: [0.2, 0.28, 0.36, 0.44, 0.52],    // target y fractions
+      TR: 1,                           // target radius (px)
+      TARGET_FRACS: [0.20, 0.20, 0.20, 0.20, 0.20], // distribution of connections to targets
+
+      // Timing (seconds from start)
+      T_APPEAR: 2,   // source nodes fully spawned
+      T_CURVES: 1.2,   // bezier curves done drawing
+      T_FADE: 4.8,   // noise nodes start fading
+      T_PULSES: 1.8,   // comets start travelling
+
+      // Animation Durations
+      DUR_SRC_APPEAR: 0.45,  // seconds for source node to fade in
+      DUR_NOISE_FADE: 1.0,   // seconds for noise to fade out
+      DUR_EDGE_DRAW: 0.15,   // seconds for an edge to trace
+
+      // Edge Routing 
+      EDGE_CP1_X: 0.42, // CP1 X offset fraction
+      EDGE_CP1_Y: 0.04, // CP1 Y offset fraction
+      EDGE_CP2_X: 0.70, // CP2 X offset fraction
+      EDGE_CP2_Y: 0.88, // CP2 Y offset fraction
+
+      // Pulses (Comets)
+      PULSE_RATE: 0.16,  // probability per edge per frame to spawn pulse
+      PULSE_SPEED: 0.10,   // baseline comet speed (fraction of curve per second)
+      PULSE_SPEED_VAR: 0.48, // comet speed variance
+      PULSE_SZ_MIN: 1.5, // comet size min
+      PULSE_SZ_VAR: 7.5, // comet size variance
+      PULSE_SZ_END: 1.0, // comet size when it arrives at target
+      PULSE_AL_MIN: 0.15, // comet alpha min
+      PULSE_AL_VAR: 0.80, // comet alpha variance
+
+      // Visuals: General
+      BREATHE_AMP: 0.9,   // source node size pulsation amplitude
+      BREATHE_SPEED: 1.3,    // rad/s
+      GLOW_SPEED: 1.5,    // target glow oscillation speed
+      NOISE_FADE: 0.82,   // noise nodes fade to (1 - NOISE_FADE) opacity
+      RIPPLE_DECAY: 0.8,   // gap-analysis ripple decay rate (per second)
+
+      // Visuals: Edges
+      EDGE_AL_BASE: 0.25, // base edge opacity
+      EDGE_LW_BASE: 0.55, // base edge line width
+
+      // Visuals: Source Nodes
+      FLOAT_AMP: 12,        // floating amplitude in px
+      FLOAT_SPEED: 0.8,     // base floating speed (rad/s)
+
+      // Visuals: Target Nodes
+      TGT_GLOW_MUL: 3.2, // base glow radius multiplier
+      TGT_GLOW_AMP: 4.0, // glow radius oscillation amplitude
+      TGT_GLOW_IN: 0.45, // inner stop fraction
+      TGT_GLOW_AL: 0.20, // glow alpha
+      TGT_INNER_R: 0.60, // inner ring radius mult
+      TGT_INNER_LW: 1.5, // inner ring line width
+      TGT_INNER_AL: 0.35, // inner ring alpha
+
+      // Visuals: Ripples (Gap Analysis)
+      RIP1_R_OFF: 70,    // max radius offset for ripple 1
+      RIP1_AL_MUL: 0.2, // alpha multiplier for ripple 1
+      RIP1_LW: 2.5,      // line width for ripple 1
+      RIP2_DEL: 0.35,    // delay progress for ripple 2
+      RIP2_R_OFF: 44,    // max radius offset for ripple 2
+      RIP2_AL_MUL: 0.45, // alpha multiplier for ripple 2
+      RIP2_LW: 1.5,      // line width for ripple 2
+
+      // Content & Colors
+      TDEF: [
+        { rgb: [0, 215, 255], name: ' ', note: null },
+        { rgb: [0, 215, 255], name: ' ', note: null },
+        { rgb: [0, 215, 255], name: ' ', note: null },
+        { rgb: [0, 215, 255], name: ' ', note: null },
+        { rgb: [0, 215, 255], name: ' ', note: null },
+      ],
+      SCOL: [
+        [0, 215, 255],   // purple
+        [0, 215, 255],   // blue
+        [0, 215, 255],   // mint / cyan
+        [0, 215, 255],   // yellow
+        [0, 215, 255],   // red
+      ],
+      NCOL: [0, 215, 255], // noise: medium gray
+
+      // Text formatting
+      TEXT_X_OFF: 18,        // label x offset from target radius
+      TEXT_Y_OFF_SOLO: 4,    // label y offset when no note
+      TEXT_Y_OFF_TOP: -5,    // label y offset when note present
+      TEXT_Y_OFF_NOTE: 17,   // note y offset from label
+      TEXT_COL_TITLE: '#111827',
+      TEXT_AL_NOTE: 0.88,
+    };
+
+    // ── State ────────────────────────────────────────────────────────
+    let nodes = [], edges = [], pulses = [], tgts = [];
+    let animT = 0, lastT = null;
+
+    const rc = (rgb, a) => `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a.toFixed(3)})`;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════════════════════════════
+    function init() {
+      nodes = []; edges = []; pulses = []; animT = 0;
+
+      tgts = CFG.TDEF.map((d, i) => ({
+        rgb: d.rgb, name: d.name, note: d.note,
+        x: W * CFG.TX,
+        y: H * CFG.TY[i],
+        r: CFG.TR,
+        rip: 0,
+        gp: Math.random() * Math.PI * 2,
+      }));
+
+      const nNoise = Math.round(CFG.SRC_COUNT * CFG.NOISE_FRAC);
+      const nConn = CFG.SRC_COUNT - nNoise;
+
+      // Distribute connected nodes across targets
+      const fracs = CFG.TARGET_FRACS;
+      const dist = fracs.map(f => Math.round(nConn * f));
+      dist[0] += nConn - dist.reduce((a, b) => a + b, 0); // correct rounding
+
+      for (let ti = 0; ti < CFG.TDEF.length; ti++) {
+        for (let k = 0; k < dist[ti]; k++) {
+          const ox = W * (CFG.SX1 + Math.random() * (CFG.SX2 - CFG.SX1));
+          const oy = H * (CFG.SY1 + Math.random() * (CFG.SY2 - CFG.SY1));
+          nodes.push({
+            ox, oy, x: ox, y: oy,
+            r: CFG.SRC_R_MIN + Math.random() * CFG.SRC_R_VAR,
+            col: CFG.SCOL[ti],
+            noise: false,
+            ti,
+            ph: Math.random() * Math.PI * 2,
+            st: Math.random() * CFG.T_APPEAR,
+            al: 0,
+            fpx: Math.random() * Math.PI * 2,
+            fpy: Math.random() * Math.PI * 2,
+            fsx: CFG.FLOAT_SPEED * (0.8 + Math.random() * 0.4),
+            fsy: CFG.FLOAT_SPEED * (0.8 + Math.random() * 0.4),
+          });
+        }
+      }
+
+      for (let k = 0; k < nNoise; k++) {
+        const ox = W * (CFG.SX1 + Math.random() * (CFG.SX2 - CFG.SX1));
+        const oy = H * (CFG.SY1 + Math.random() * (CFG.SY2 - CFG.SY1));
+        nodes.push({
+          ox, oy, x: ox, y: oy,
+          r: CFG.NOISE_R_MIN + Math.random() * CFG.NOISE_R_VAR,
+          col: CFG.NCOL,
+          noise: true,
+          ti: -1,
+          ph: Math.random() * Math.PI * 2,
+          st: Math.random() * CFG.T_APPEAR,
+          al: 0,
+          fpx: Math.random() * Math.PI * 2,
+          fpy: Math.random() * Math.PI * 2,
+          fsx: CFG.FLOAT_SPEED * (0.8 + Math.random() * 0.4),
+          fsy: CFG.FLOAT_SPEED * (0.8 + Math.random() * 0.4),
+        });
+      }
+
+      // Shuffle so noise and connected nodes are interleaved visually
+      for (let i = nodes.length - 1; i > 0; i--) {
+        const j = 0 | (Math.random() * (i + 1));
+        [nodes[i], nodes[j]] = [nodes[j], nodes[i]];
+      }
+
+      // Build edges for connected nodes
+      nodes.forEach(n => {
+        if (n.noise) return;
+        const tg = tgts[n.ti];
+        const dx = tg.x - n.x, dy = tg.y - n.y;
+        // Cubic bezier: depart horizontally, arrive at target y
+        edges.push({
+          n,
+          ti: n.ti,
+          cp1x: n.x + dx * CFG.EDGE_CP1_X,
+          cp1y: n.y + dy * CFG.EDGE_CP1_Y,
+          cp2x: n.x + dx * CFG.EDGE_CP2_X,
+          cp2y: n.y + dy * CFG.EDGE_CP2_Y,
+          pr: 0,
+          st: CFG.T_APPEAR * 0.55 + Math.random() * (CFG.T_CURVES - CFG.T_APPEAR * 0.55),
+        });
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // BEZIER HELPERS
+    // ═══════════════════════════════════════════════════════════════════
+    function bezPt(t, x0, y0, x1, y1, x2, y2, x3, y3) {
+      const u = 1 - t, uu = u * u, tt = t * t;
+      return {
+        x: uu * u * x0 + 3 * uu * t * x1 + 3 * u * tt * x2 + tt * t * x3,
+        y: uu * u * y0 + 3 * uu * t * y1 + 3 * u * tt * y2 + tt * t * y3,
+      };
+    }
+
+    function drawPartialBez(x0, y0, x1, y1, x2, y2, x3, y3, prog) {
+      const S = 40, max = 0 | (S * Math.min(prog, 1));
+      if (max < 1) return;
+      ctx.beginPath();
+      for (let i = 0; i <= max; i++) {
+        const p = bezPt(i / S, x0, y0, x1, y1, x2, y2, x3, y3);
+        i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+      }
+      ctx.stroke();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // UPDATE
+    // ═══════════════════════════════════════════════════════════════════
+    function update(dt) {
+      animT += dt;
+
+      // Source node floating & alpha
+      nodes.forEach(n => {
+        // Floating motion
+        n.x = n.ox + Math.sin(animT * n.fsx + n.fpx) * CFG.FLOAT_AMP;
+        n.y = n.oy + Math.cos(animT * n.fsy + n.fpy) * CFG.FLOAT_AMP;
+
+        // Alpha fade in/out
+        if (animT < n.st) { n.al = 0; return; }
+        const ap = Math.min((animT - n.st) / CFG.DUR_SRC_APPEAR, 1);
+        if (n.noise && animT > CFG.T_FADE) {
+          const f = Math.min((animT - CFG.T_FADE) / CFG.DUR_NOISE_FADE, 1);
+          n.al = ap * (1 - f * CFG.NOISE_FADE);
+        } else {
+          n.al = ap;
+        }
+      });
+
+      // Edge control points & draw progress
+      edges.forEach(e => {
+        const tg = tgts[e.ti];
+        const dx = tg.x - e.n.x, dy = tg.y - e.n.y;
+        e.cp1x = e.n.x + dx * CFG.EDGE_CP1_X;
+        e.cp1y = e.n.y + dy * CFG.EDGE_CP1_Y;
+        e.cp2x = e.n.x + dx * CFG.EDGE_CP2_X;
+        e.cp2y = e.n.y + dy * CFG.EDGE_CP2_Y;
+        e.pr = animT < e.st ? 0 : Math.min((animT - e.st) / CFG.DUR_EDGE_DRAW, 1);
+      });
+
+      // Spawn comets
+      if (animT > CFG.T_PULSES) {
+        edges.forEach(e => {
+          if (e.pr < 1 || Math.random() > CFG.PULSE_RATE) return;
+          pulses.push({
+            e,
+            t: 0,
+            spd: CFG.PULSE_SPEED + Math.random() * CFG.PULSE_SPEED_VAR,
+            sz: CFG.PULSE_SZ_MIN + Math.random() * CFG.PULSE_SZ_VAR,
+            al: CFG.PULSE_AL_MIN + Math.random() * CFG.PULSE_AL_VAR,
+          });
+        });
+      }
+
+      // Move comets
+      for (let i = pulses.length - 1; i >= 0; i--) {
+        const p = pulses[i];
+        p.t += p.spd * dt;
+        if (p.t >= 1) {
+          if (p.e.ti === CFG.TDEF.length - 1) tgts[CFG.TDEF.length - 1].rip = 1.0; // trigger gap-analysis ripple
+          pulses.splice(i, 1);
+        }
+      }
+
+      // Decay ripples
+      tgts.forEach(tg => { if (tg.rip > 0) tg.rip = Math.max(0, tg.rip - dt * CFG.RIPPLE_DECAY); });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // DRAW
+    // ═══════════════════════════════════════════════════════════════════
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // ── Edges ──────────────────────────────────────────────────────
+      edges.forEach(e => {
+        if (e.pr <= 0) return;
+        const n = e.n, tg = tgts[e.ti];
+
+        ctx.strokeStyle = rc(tg.rgb, CFG.EDGE_AL_BASE);
+        ctx.lineWidth = CFG.EDGE_LW_BASE;
+
+        if (e.pr >= 1) {
+          ctx.beginPath();
+          ctx.moveTo(n.x, n.y);
+          ctx.bezierCurveTo(e.cp1x, e.cp1y, e.cp2x, e.cp2y, tg.x, tg.y);
+          ctx.stroke();
+        } else {
+          drawPartialBez(n.x, n.y, e.cp1x, e.cp1y, e.cp2x, e.cp2y, tg.x, tg.y, e.pr);
+        }
+      });
+
+      // ── Comets ─────────────────────────────────────────────────────
+      pulses.forEach(p => {
+        const e = p.e, tg = tgts[e.ti];
+        const pt = bezPt(p.t, e.n.x, e.n.y, e.cp1x, e.cp1y, e.cp2x, e.cp2y, tg.x, tg.y);
+        const [r, g, b] = tg.rgb;
+        const currentSz = p.sz * (1 - p.t) + CFG.PULSE_SZ_END * p.t;
+        ctx.fillStyle = `rgba(${r},${g},${b},${p.al.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, currentSz, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // ── Source nodes ───────────────────────────────────────────────
+      nodes.forEach(n => {
+        if (n.al <= 0) return;
+        const br = 1 + CFG.BREATHE_AMP * Math.sin(animT * CFG.BREATHE_SPEED + n.ph);
+        const [cr, cg, cb] = n.col;
+
+        ctx.fillStyle = `rgba(${cr},${cg},${cb},${n.al})`;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r * br, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // ── Target nodes ───────────────────────────────────────────────
+      tgts.forEach((tg, i) => {
+        const [r, g, b] = tg.rgb;
+
+        // Glow halo
+        const glowR = tg.r * CFG.TGT_GLOW_MUL + CFG.TGT_GLOW_AMP * Math.sin(animT * CFG.GLOW_SPEED + tg.gp);
+        const grd = ctx.createRadialGradient(tg.x, tg.y, tg.r * CFG.TGT_GLOW_IN, tg.x, tg.y, glowR);
+        grd.addColorStop(0, `rgba(${r},${g},${b},${CFG.TGT_GLOW_AL})`);
+        grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(tg.x, tg.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Body
+        ctx.fillStyle = `rgba(${r},${g},${b},1)`;
+        ctx.beginPath();
+        ctx.arc(tg.x, tg.y, tg.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Inner highlight ring
+        ctx.strokeStyle = `rgba(255,255,255,${CFG.TGT_INNER_AL})`;
+        ctx.lineWidth = CFG.TGT_INNER_LW;
+        ctx.beginPath();
+        ctx.arc(tg.x, tg.y, tg.r * CFG.TGT_INNER_R, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Gap-analysis warning ripple
+        if (i === CFG.TDEF.length - 1 && tg.rip > 0) {
+          const rr1 = tg.r + (1 - tg.rip) * CFG.RIP1_R_OFF;
+          ctx.strokeStyle = `rgba(${r},${g},${b},${tg.rip * CFG.RIP1_AL_MUL})`;
+          ctx.lineWidth = CFG.RIP1_LW;
+          ctx.beginPath();
+          ctx.arc(tg.x, tg.y, rr1, 0, Math.PI * 2);
+          ctx.stroke();
+          // second ring, offset
+          const rip2 = Math.max(0, tg.rip - CFG.RIP2_DEL);
+          if (rip2 > 0) {
+            const rr2 = tg.r + (1 - rip2) * CFG.RIP2_R_OFF;
+            ctx.strokeStyle = `rgba(${r},${g},${b},${rip2 * CFG.RIP2_AL_MUL})`;
+            ctx.lineWidth = CFG.RIP2_LW;
+            ctx.beginPath();
+            ctx.arc(tg.x, tg.y, rr2, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+
+        // Labels
+        const lx = tg.x + tg.r + CFG.TEXT_X_OFF;
+        const ly = tg.y + (tg.note ? CFG.TEXT_Y_OFF_TOP : CFG.TEXT_Y_OFF_SOLO);
+        ctx.fillStyle = CFG.TEXT_COL_TITLE;
+        ctx.font = '600 14px Inter,system-ui,sans-serif';
+        ctx.fillText(tg.name, lx, ly);
+        if (tg.note) {
+          ctx.fillStyle = `rgba(${r},${g},${b},${CFG.TEXT_AL_NOTE})`;
+          ctx.font = '500 12px Inter,system-ui,sans-serif';
+          ctx.fillText(tg.note, lx, ly + CFG.TEXT_Y_OFF_NOTE);
+        }
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // LOOP
+    // ═══════════════════════════════════════════════════════════════════
+    function loop(now) {
+      requestAnimationFrame(loop);
+      const dt = lastT ? Math.min((now - lastT) / 1000, 0.05) : 0;
+      lastT = now;
+      update(dt);
+      draw();
+    }
+
+    init();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+
+</html>
