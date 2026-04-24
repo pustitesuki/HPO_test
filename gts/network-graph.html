@@ -119,7 +119,7 @@
       SPRING_REST_R: 0.85,     // множитель суммы радиусов для длины пружины
       SPRING_K: 0.022,    // жёсткость пружины
 
-      DAMPING: 0.84,     // затухание скорости
+      DAMPING: 0.44,     // затухание скорости
 
       // ── Рендеринг: рёбра ──
       EDGE_MAIN_ALPHA_BASE: 0.12,  // базовая прозрачность рёбер основного кластера
@@ -142,9 +142,13 @@
       NODE_ALPHA_PERI: 0.82,  // непрозрачность периферийных
       NODE_ALPHA_SPREAD: 0.45,  // разброс прозрачности узлов
 
+      // ── Появление (после первичной быстрой симуляции) ──
+      FADE_START_ALPHA: 0.70,   // при alpha ниже начинается плавный Fade-in
+      FADE_END_ALPHA: 0.45,     // при alpha ниже полная непрозрачность
+
       // ── Дыхание (после схождения) ──
-      BREATHE_ALPHA_THRESHOLD: 0.38, // ниже этого alpha — включается дыхание
-      BREATHE_AMPLITUDE: 0.22, // амплитуда пульсации радиуса
+      BREATHE_ALPHA_THRESHOLD: 0.48, // ниже этого alpha — включается дыхание
+      BREATHE_AMPLITUDE: 0.25, // амплитуда пульсации радиуса
       BREATHE_SPEED: 1.05,  // скорость пульсации (rad/s)
 
       // ── Рёбра Безье ──
@@ -367,6 +371,13 @@
     function draw() {
       ctx.clearRect(0, 0, W, H);
 
+      let fade = (CFG.FADE_START_ALPHA - alpha) / (CFG.FADE_START_ALPHA - CFG.FADE_END_ALPHA);
+      fade = Math.max(0, Math.min(1, fade));
+      if (fade <= 0) return;
+
+      ctx.save();
+      ctx.globalAlpha = fade;
+
       // Edges
       for (const [ai, bi, curve] of edges) {
         const na = nodes[ai], nb = nodes[bi];
@@ -421,6 +432,8 @@
         ctx.arc(nd.x, nd.y, r, 0, Math.PI * 2);
         ctx.fill();
       }
+
+      ctx.restore();
     }
 
     // ═══════════════════════════════════════════════════════════════
