@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Graph</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #ffffff;
+    }
+
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="c"></canvas>
+  <script>
+
+    // ═══════════════════════════════════════════════════════════════
+    // CONFIG — все настройки здесь
+    // ═══════════════════════════════════════════════════════════════
+    const CFG = {
+
+      // ── Палитра: [r, g, b].  Индекс 0 — доминантный цвет основного кластера ──
+      // Все узлы одного цвета #00D7FF
+      PALETTE: [
+        [0, 215, 255] // 0 — #00D7FF
+      ],
+
+      // ── Основной кластер: супер-хабы ──
+      SH_COUNT: 16,     // количество супер-хабов
+      SH_R_MIN: 22,     // минимальный радиус
+      SH_R_RANGE: 11,     // +случайное значение до этого
+      SH_START_R: 4,     // радиус стартового разброса от центра
+
+      // ── Основной кластер: первичные хабы ──
+      PH_COUNT: 320,
+      PH_R_MIN: 5,
+      PH_R_RANGE: 9,
+      PH_START_R: 32,
+      PH_SH_EDGE2_PROB: 0.50,  // вероятность второго ребра к супер-хабу
+      PH_PH_EDGE1_PROB: 0.55,  // вероятность ребра к другому хабу
+      PH_PH_EDGE2_PROB: 0.28,  // вероятность второго ребра к другому хабу
+
+      // ── Основной кластер: вторичные узлы ──
+      SEC_COUNT: 700,
+      SEC_R_MIN: 3.5,
+      SEC_R_RANGE: 5.5,
+      SEC_START_R: 88,
+      SEC_SEC_EDGE1_PROB: 0.45, // вероятность ребра между вторичными
+      SEC_SEC_EDGE2_PROB: 0.15,
+
+      // ── Основной кластер: листья ──
+      ML_COUNT: 280,
+      ML_R_MIN: 1.0,
+      ML_R_RANGE: 3.2,
+      ML_START_R: 110,
+      ML_TO_SEC_PROB: 0.72,   // вероятность соединения с вторичным (иначе — с хабом)
+      ML_ML_EDGE_PROB: 0.22,   // вероятность ребра листа к листу
+
+      // ── Периферийные кластеры ──
+      PERI_COUNT: 14,           // количество периферийных кластеров
+      PERI_COLORS: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 3],
+      PERI_BASE_R_MIN: 170,   // минимальный радиус от центра
+      PERI_BASE_R_RANGE: 55,   // +случайное значение
+      PERI_ANGLE_JITTER: 0.50,  // угловой разброс кластера (рад)
+      PERI_SIZE_MIN: 5,   // минимальный размер кластера (узлов)
+      PERI_SIZE_RANGE: 12,   // +случайное значение
+      PERI_NODE_ANGLE_SPREAD: 0.90, // разброс угла внутри кластера
+      PERI_NODE_R_SPREAD: 45,   // разброс расстояния внутри кластера
+      PERI_NODE_JITTER: 22,   // случайный сдвиг позиции (px)
+      PERI_HUB_R_MIN: 4.0,   // радиус главного узла кластера
+      PERI_HUB_R_RANGE: 6.0,
+      PERI_LEAF_R_MIN: 1.5,   // радиус рядовых узлов кластера
+      PERI_LEAF_R_RANGE: 3.5,
+      PERI_LOOP_PROB: 0.38,  // вероятность дополнительного ребра внутри кластера
+      PERI_CHAIN_LEN_MIN: 2,   // длина цепочки к основному кластеру
+      PERI_CHAIN_LEN_RANGE: 3,
+      PERI_CHAIN_START_R: 115,   // радиус начала цепочки (у края основного кластера)
+      PERI_CHAIN_ANGLE_JITTER: 0.15,
+      PERI_CHAIN_JITTER: 15,   // пространственный сдвиг узлов цепочки (px)
+      PERI_CHAIN_R_MIN: 1.2,   // радиус узлов цепочки
+      PERI_CHAIN_R_RANGE: 2.3,
+      PERI_OUTER_SEC: 45,   // сколько outer SEC-узлов в пуле для моста
+      PERI_OUTER_ML: 65,   // сколько outer ML-узлов в пуле для моста
+
+      // ── Физическая симуляция ──
+      ALPHA_DECAY: 0.0018,    // скорость «охлаждения» симуляции
+      ALPHA_MIN: 0.008,     // минимальная температура (вечное дыхание)
+      INIT_VELOCITY: 1.5,       // начальная случайная скорость узлов
+
+      GRAVITY_MAIN: 0.005,     // сила гравитации к центру для основного кластера
+      GRAVITY_MAIN_R: 0.025,     // дополнительная гравитация пропорционально радиусу узла
+      GRAVITY_MAIN_BASE: 0.6,    // базовый множитель гравитации
+      GRAVITY_PERI: 0.0018,    // гравитация периферийных узлов
+
+      REPULSION_RANGE: 230,      // максимальная дистанция отталкивания (px)
+      REPULSION_R_MUL: 5,      // коэффициент отталкивания через произведение радиусов
+      REPULSION_BASE: 180,      // базовое слагаемое отталкивания
+
+      COLLISION_GAP: 1.5,      // зазор между узлами при коллизии
+      COLLISION_RESP: 0.45,     // жёсткость разрешения коллизий
+
+      SPRING_REST_BASE: 18,      // базовая длина пружины
+      SPRING_REST_R: 0.85,     // множитель суммы радиусов для длины пружины
+      SPRING_K: 0.022,    // жёсткость пружины
+
+      DAMPING: 0.84,     // затухание скорости
+
+      // ── Рендеринг: рёбра ──
+      EDGE_MAIN_ALPHA_BASE: 0.12,  // базовая прозрачность рёбер основного кластера
+      EDGE_MAIN_ALPHA_R: 0.0025, // добавка к прозрачности за радиус узла
+      EDGE_PERI_ALPHA_BASE: 0.36,   // прозрачность рёбер периферийных кластеров
+      EDGE_PERI_ALPHA_R: 0.012,
+      EDGE_MAIN_WIDTH: 0.55,   // толщина линии основного кластера
+      EDGE_PERI_WIDTH: 0.75,   // толщина линии периферийных
+
+      // ── Рендеринг: узлы ──
+      NODE_GLOW_THRESHOLD: 7,     // ниже этого радиуса — glow не рисуется
+      NODE_GLOW_R_MUL: 2.8,   // радиус ореола = r * это значение
+      NODE_GLOW_INNER_MUL: 0.35,  // внутренний радиус градиента
+      NODE_GLOW_ALPHA_MAIN: 0.10,  // яркость ореола основного кластера
+      NODE_GLOW_ALPHA_PERI: 0.16,  // яркость ореола периферийных
+
+      NODE_ALPHA_MAIN_BASE: 0.42,  // базовая непрозрачность основного кластера
+      NODE_ALPHA_MAIN_R: 0.009, // добавка за радиус
+      NODE_ALPHA_MAIN_MAX: 0.92,  // максимум
+      NODE_ALPHA_PERI: 0.82,  // непрозрачность периферийных
+      NODE_ALPHA_SPREAD: 0.45,  // разброс прозрачности узлов
+
+      // ── Дыхание (после схождения) ──
+      BREATHE_ALPHA_THRESHOLD: 0.38, // ниже этого alpha — включается дыхание
+      BREATHE_AMPLITUDE: 0.22, // амплитуда пульсации радиуса
+      BREATHE_SPEED: 1.05,  // скорость пульсации (rad/s)
+
+      // ── Рёбра Безье ──
+      EDGE_CURVE_FACTOR: 0.82, // амплитуда изгиба (доля от длины ребра)
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    // Setup
+    // ═══════════════════════════════════════════════════════════════
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+
+    let W = canvas.width = window.innerWidth;
+    let H = canvas.height = window.innerHeight;
+    let CX = W / 2, CY = H / 2;
+
+    const PAL = CFG.PALETTE;
+    function rgba(c, a) { return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+    function mix(ca, cb) { return [(ca[0] + cb[0]) >> 1, (ca[1] + cb[1]) >> 1, (ca[2] + cb[2]) >> 1]; }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Graph data
+    // ═══════════════════════════════════════════════════════════════
+    const nodes = [];
+    const edges = [];
+    let nid = 0;
+
+    function mkNode(community, r, startR) {
+      const id = nid++;
+      const a = Math.random() * Math.PI * 2;
+      const d = (startR || 8) * Math.pow(Math.random(), 0.5);
+      nodes.push({
+        id, community, r,
+        x: CX + Math.cos(a) * d,
+        y: CY + Math.sin(a) * d,
+        vx: (Math.random() - 0.5) * CFG.INIT_VELOCITY,
+        vy: (Math.random() - 0.5) * CFG.INIT_VELOCITY,
+        fx: 0, fy: 0,
+        phase: Math.random() * Math.PI * 2,
+        alphaOffset: (Math.random() - 0.5) * CFG.NODE_ALPHA_SPREAD,
+      });
+      return id;
+    }
+
+    function mkEdge(a, b) { edges.push([a, b, (Math.random() - 0.5) * CFG.EDGE_CURVE_FACTOR]); }
+    function rnd(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+    function rndIdx(arr) { return Math.floor(Math.random() * arr.length); }
+
+    // ── Super-hubs ──
+    const SH = [];
+    for (let i = 0; i < CFG.SH_COUNT; i++)
+      SH.push(mkNode(0, CFG.SH_R_MIN + Math.random() * CFG.SH_R_RANGE, CFG.SH_START_R));
+    for (let i = 0; i < SH.length; i++)
+      for (let j = i + 1; j < SH.length; j++) mkEdge(SH[i], SH[j]);
+
+    // ── Primary hubs ──
+    const PH = [];
+    for (let i = 0; i < CFG.PH_COUNT; i++) {
+      const h = mkNode(0, CFG.PH_R_MIN + Math.random() * CFG.PH_R_RANGE, CFG.PH_START_R);
+      PH.push(h);
+      mkEdge(h, rnd(SH));
+      if (Math.random() < CFG.PH_SH_EDGE2_PROB) mkEdge(h, rnd(SH));
+      if (PH.length > 3 && Math.random() < CFG.PH_PH_EDGE1_PROB) mkEdge(h, PH[rndIdx(PH)]);
+      if (PH.length > 8 && Math.random() < CFG.PH_PH_EDGE2_PROB) mkEdge(h, PH[rndIdx(PH)]);
+    }
+
+    // ── Secondary nodes ──
+    const SEC = [];
+    for (let i = 0; i < CFG.SEC_COUNT; i++) {
+      const s = mkNode(0, CFG.SEC_R_MIN + Math.random() * CFG.SEC_R_RANGE, CFG.SEC_START_R);
+      SEC.push(s);
+      mkEdge(s, rnd(PH));
+      if (Math.random() < CFG.SEC_SEC_EDGE1_PROB && SEC.length > 2) mkEdge(s, SEC[rndIdx(SEC)]);
+      if (Math.random() < CFG.SEC_SEC_EDGE2_PROB && SEC.length > 6) mkEdge(s, SEC[rndIdx(SEC)]);
+    }
+
+    // ── Main leaves ──
+    const ML = [];
+    for (let i = 0; i < CFG.ML_COUNT; i++) {
+      const l = mkNode(0, CFG.ML_R_MIN + Math.random() * CFG.ML_R_RANGE, CFG.ML_START_R);
+      ML.push(l);
+      mkEdge(l, Math.random() < CFG.ML_TO_SEC_PROB ? rnd(SEC) : rnd(PH));
+      if (Math.random() < CFG.ML_ML_EDGE_PROB && ML.length > 4) mkEdge(l, ML[rndIdx(ML)]);
+    }
+
+    // ── Peripheral clusters ──
+    const outerPool = [...SEC.slice(-CFG.PERI_OUTER_SEC), ...ML.slice(-CFG.PERI_OUTER_ML)];
+
+    for (let ci = 0; ci < CFG.PERI_COUNT; ci++) {
+      const community = CFG.PERI_COLORS[ci];
+      const baseAngle = (ci / CFG.PERI_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * CFG.PERI_ANGLE_JITTER;
+      const baseRadius = CFG.PERI_BASE_R_MIN + Math.random() * CFG.PERI_BASE_R_RANGE;
+      const clusterSize = CFG.PERI_SIZE_MIN + Math.floor(Math.random() * CFG.PERI_SIZE_RANGE);
+
+      const cNodes = [];
+      for (let k = 0; k < clusterSize; k++) {
+        const la = baseAngle + (Math.random() - 0.5) * CFG.PERI_NODE_ANGLE_SPREAD;
+        const ld = baseRadius + (Math.random() - 0.5) * CFG.PERI_NODE_R_SPREAD;
+        const r = k === 0
+          ? CFG.PERI_HUB_R_MIN + Math.random() * CFG.PERI_HUB_R_RANGE
+          : CFG.PERI_LEAF_R_MIN + Math.random() * CFG.PERI_LEAF_R_RANGE;
+        const cn = mkNode(community, r, 0);
+        nodes[cn].x = CX + Math.cos(la) * ld + (Math.random() - 0.5) * CFG.PERI_NODE_JITTER;
+        nodes[cn].y = CY + Math.sin(la) * ld + (Math.random() - 0.5) * CFG.PERI_NODE_JITTER;
+        cNodes.push(cn);
+      }
+
+      for (let k = 1; k < cNodes.length; k++) {
+        mkEdge(cNodes[0], cNodes[k]);
+        if (k > 1 && Math.random() < CFG.PERI_LOOP_PROB) mkEdge(cNodes[k - 1], cNodes[k]);
+      }
+
+      const chainLen = CFG.PERI_CHAIN_LEN_MIN + Math.floor(Math.random() * CFG.PERI_CHAIN_LEN_RANGE);
+      const chainAngle = baseAngle + (Math.random() - 0.5) * CFG.PERI_CHAIN_ANGLE_JITTER;
+      let prev = rnd(outerPool);
+
+      for (let k = 0; k < chainLen; k++) {
+        const progress = (k + 1) / (chainLen + 1);
+        const cr = CFG.PERI_CHAIN_START_R + progress * (baseRadius - CFG.PERI_CHAIN_START_R);
+        const cn = mkNode(community, CFG.PERI_CHAIN_R_MIN + Math.random() * CFG.PERI_CHAIN_R_RANGE, 0);
+        nodes[cn].x = CX + Math.cos(chainAngle) * cr + (Math.random() - 0.5) * CFG.PERI_CHAIN_JITTER;
+        nodes[cn].y = CY + Math.sin(chainAngle) * cr + (Math.random() - 0.5) * CFG.PERI_CHAIN_JITTER;
+        mkEdge(prev, cn);
+        prev = cn;
+      }
+      mkEdge(prev, cNodes[0]);
+    }
+
+    // Pre-sort nodes small → large (large painted on top)
+    nodes.sort((a, b) => a.r - b.r);
+    const idxOf = new Array(nodes.length);
+    nodes.forEach((nd, i) => { idxOf[nd.id] = i; });
+    for (let e = 0; e < edges.length; e++) {
+      edges[e][0] = idxOf[edges[e][0]];
+      edges[e][1] = idxOf[edges[e][1]];
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Force simulation
+    // ═══════════════════════════════════════════════════════════════
+    let alpha = 1.0;
+
+    function tick() {
+      const n = nodes.length;
+      const a = Math.max(alpha, CFG.ALPHA_MIN);
+
+      for (let i = 0; i < n; i++) { nodes[i].fx = 0; nodes[i].fy = 0; }
+
+      // Gravity toward center
+      for (let i = 0; i < n; i++) {
+        const nd = nodes[i];
+        const dx = CX - nd.x, dy = CY - nd.y;
+        const g = nd.community === 0
+          ? CFG.GRAVITY_MAIN * (CFG.GRAVITY_MAIN_BASE + nd.r * CFG.GRAVITY_MAIN_R)
+          : CFG.GRAVITY_PERI;
+        nd.fx += dx * g * a;
+        nd.fy += dy * g * a;
+      }
+
+      // Repulsion + collision
+      const repRangeSq = CFG.REPULSION_RANGE * CFG.REPULSION_RANGE;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const dx = nodes[i].x - nodes[j].x;
+          const dy = nodes[i].y - nodes[j].y;
+          const distSq = dx * dx + dy * dy || 0.01;
+
+          // Collision
+          const minD = nodes[i].r + nodes[j].r + CFG.COLLISION_GAP;
+          if (distSq < minD * minD) {
+            const dist = Math.sqrt(distSq);
+            const overlap = (minD - dist) * CFG.COLLISION_RESP;
+            const nx = dx / dist, ny = dy / dist;
+            nodes[i].x += nx * overlap; nodes[i].y += ny * overlap;
+            nodes[j].x -= nx * overlap; nodes[j].y -= ny * overlap;
+          }
+
+          // Repulsion
+          if (distSq < repRangeSq) {
+            const dist = Math.sqrt(distSq);
+            const strength = (nodes[i].r * nodes[j].r * CFG.REPULSION_R_MUL + CFG.REPULSION_BASE) * a;
+            const f = strength / distSq;
+            const fx = dx / dist * f, fy = dy / dist * f;
+            nodes[i].fx += fx; nodes[i].fy += fy;
+            nodes[j].fx -= fx; nodes[j].fy -= fy;
+          }
+        }
+      }
+
+      // Springs
+      for (const [ai, bi] of edges) {
+        const na = nodes[ai], nb = nodes[bi];
+        const dx = nb.x - na.x, dy = nb.y - na.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const rest = CFG.SPRING_REST_BASE + (na.r + nb.r) * CFG.SPRING_REST_R;
+        const f = (dist - rest) * CFG.SPRING_K * a;
+        const fx = dx / dist * f, fy = dy / dist * f;
+        na.fx += fx; na.fy += fy;
+        nb.fx -= fx; nb.fy -= fy;
+      }
+
+      // Integrate
+      for (let i = 0; i < n; i++) {
+        const nd = nodes[i];
+        nd.vx = (nd.vx + nd.fx) * CFG.DAMPING;
+        nd.vy = (nd.vy + nd.fy) * CFG.DAMPING;
+        nd.x += nd.vx;
+        nd.y += nd.vy;
+      }
+
+      alpha = Math.max(CFG.ALPHA_MIN, alpha - CFG.ALPHA_DECAY);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Rendering
+    // ═══════════════════════════════════════════════════════════════
+    let animTime = 0;
+    let lastTime = performance.now();
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Edges
+      for (const [ai, bi, curve] of edges) {
+        const na = nodes[ai], nb = nodes[bi];
+        const ca = PAL[0], cb = PAL[0];
+        const isMain = na.community === 0 && nb.community === 0;
+        const edgeAlpha = isMain
+          ? CFG.EDGE_MAIN_ALPHA_BASE + Math.min(na.r, nb.r) * CFG.EDGE_MAIN_ALPHA_R
+          : CFG.EDGE_PERI_ALPHA_BASE + Math.min(na.r, nb.r) * CFG.EDGE_PERI_ALPHA_R;
+        ctx.strokeStyle = rgba(mix(ca, cb), edgeAlpha);
+        ctx.lineWidth = isMain ? CFG.EDGE_MAIN_WIDTH : CFG.EDGE_PERI_WIDTH;
+        const mx = (na.x + nb.x) * 0.5;
+        const my = (na.y + nb.y) * 0.5;
+        const dx = nb.x - na.x, dy = nb.y - na.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const cpx = mx - (dy / len) * curve * len;
+        const cpy = my + (dx / len) * curve * len;
+        ctx.beginPath();
+        ctx.moveTo(na.x, na.y);
+        ctx.quadraticCurveTo(cpx, cpy, nb.x, nb.y);
+        ctx.stroke();
+      }
+
+      // Nodes
+      const settled = alpha < CFG.BREATHE_ALPHA_THRESHOLD;
+      for (const nd of nodes) {
+        const c = PAL[0];
+        const breathe = settled
+          ? 1 + CFG.BREATHE_AMPLITUDE * Math.sin(animTime * CFG.BREATHE_SPEED + nd.phase)
+          : 1.0;
+        const r = nd.r * breathe;
+
+        // Glow
+        if (r > CFG.NODE_GLOW_THRESHOLD) {
+          const gr = r * CFG.NODE_GLOW_R_MUL;
+          const grd = ctx.createRadialGradient(nd.x, nd.y, r * CFG.NODE_GLOW_INNER_MUL, nd.x, nd.y, gr);
+          const glowA = nd.community === 0 ? CFG.NODE_GLOW_ALPHA_MAIN : CFG.NODE_GLOW_ALPHA_PERI;
+          grd.addColorStop(0, rgba(c, glowA));
+          grd.addColorStop(1, rgba(c, 0));
+          ctx.fillStyle = grd;
+          ctx.beginPath();
+          ctx.arc(nd.x, nd.y, gr, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Body
+        let bodyA = nd.community === 0
+          ? Math.min(CFG.NODE_ALPHA_MAIN_BASE + nd.r * CFG.NODE_ALPHA_MAIN_R, CFG.NODE_ALPHA_MAIN_MAX)
+          : CFG.NODE_ALPHA_PERI;
+        bodyA = Math.max(0.1, Math.min(1.0, bodyA + nd.alphaOffset));
+        ctx.fillStyle = rgba(c, bodyA);
+        ctx.beginPath();
+        ctx.arc(nd.x, nd.y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Loop
+    // ═══════════════════════════════════════════════════════════════
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+      animTime += dt;
+
+      const ticks = alpha > 0.65 ? 6 : (alpha > 0.35 ? 4 : (alpha > 0.12 ? 2 : 1));
+      for (let t = 0; t < ticks; t++) tick();
+
+      draw();
+    }
+
+    requestAnimationFrame(animate);
+
+    window.addEventListener('resize', () => {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      CX = W / 2; CY = H / 2;
+    });
+
+  </script>
+</body>
+
+</html>
