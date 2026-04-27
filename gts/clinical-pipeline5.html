@@ -17,7 +17,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: transparent;
+      background: #fff;
     }
 
     canvas {
@@ -43,12 +43,12 @@
     // ═══════════════════════════════════════════════════════════════════
     const CFG = {
       // ── Source Nodes ──
-      SRC_COUNT: 200,     // total source nodes
+      SRC_COUNT: 300,     // total source nodes
       NOISE_FRAC: 0.78,    // fraction that are noise (no connection)
-      SRC_R_MIN: 2.5,     // min radius for connected nodes
+      SRC_R_MIN: 1.0,     // min radius for connected nodes
       SRC_R_VAR: 4.0,     // radius variance for connected nodes
-      NOISE_R_MIN: 0.5,   // min radius for noise nodes
-      NOISE_R_VAR: 0.2,   // radius variance for noise nodes
+      NOISE_R_MIN: 0.2,   // min radius for noise nodes
+      NOISE_R_VAR: 0.8,   // radius variance for noise nodes
 
       // Source zone (fractions of W / H)
       SX1: 0.04, SX2: 0.14,
@@ -78,13 +78,13 @@
       EDGE_CP2_Y: 0.88, // CP2 Y offset fraction
 
       // Pulses (Comets)
-      PULSE_RATE: 0.08,  // probability per edge per frame to spawn pulse
-      PULSE_SPEED: 0.10,   // baseline comet speed (fraction of curve per second)
+      PULSE_RATE: 0.26,  // probability per edge per frame to spawn pulse
+      PULSE_SPEED: 0.05,   // baseline comet speed (fraction of curve per second)
       PULSE_SPEED_VAR: 0.48, // comet speed variance
       PULSE_SZ_MIN: 1.5, // comet size min
-      PULSE_SZ_VAR: 7.5, // comet size variance
-      PULSE_SZ_END: 1.0, // comet size when it arrives at target
-      PULSE_AL_MIN: 0.15, // comet alpha min
+      PULSE_SZ_VAR: 5.5, // comet size variance
+      PULSE_SZ_END: 0.5, // comet size when it arrives at target
+      PULSE_AL_MIN: 0.1, // comet alpha min
       PULSE_AL_VAR: 0.80, // comet alpha variance
 
       // Visuals: General
@@ -92,15 +92,14 @@
       BREATHE_SPEED: 1.3,    // rad/s
       GLOW_SPEED: 1.5,    // target glow oscillation speed
       NOISE_FADE: 0.82,   // noise nodes fade to (1 - NOISE_FADE) opacity
-      RIPPLE_DECAY: 0.8,   // gap-analysis ripple decay rate (per second)
 
       // Visuals: Edges
       EDGE_AL_BASE: 0.25, // base edge opacity
       EDGE_LW_BASE: 0.55, // base edge line width
 
       // Visuals: Source Nodes
-      FLOAT_AMP: 12,        // floating amplitude in px
-      FLOAT_SPEED: 0.8,     // base floating speed (rad/s)
+      FLOAT_AMP: 20,        // floating amplitude in px
+      FLOAT_SPEED: 0.5,     // base floating speed (rad/s)
 
       // Visuals: Target Nodes
       TGT_GLOW_MUL: 3.2, // base glow radius multiplier
@@ -111,14 +110,7 @@
       TGT_INNER_LW: 1.5, // inner ring line width
       TGT_INNER_AL: 0.35, // inner ring alpha
 
-      // Visuals: Ripples (Gap Analysis)
-      RIP1_R_OFF: 70,    // max radius offset for ripple 1
-      RIP1_AL_MUL: 0.2, // alpha multiplier for ripple 1
-      RIP1_LW: 2.5,      // line width for ripple 1
-      RIP2_DEL: 0.35,    // delay progress for ripple 2
-      RIP2_R_OFF: 44,    // max radius offset for ripple 2
-      RIP2_AL_MUL: 0.45, // alpha multiplier for ripple 2
-      RIP2_LW: 1.5,      // line width for ripple 2
+
 
       // Content & Colors
       TDEF: [
@@ -315,13 +307,12 @@
         const p = pulses[i];
         p.t += p.spd * dt;
         if (p.t >= 1) {
-          if (p.e.ti === CFG.TDEF.length - 1) tgts[CFG.TDEF.length - 1].rip = 1.0; // trigger gap-analysis ripple
           pulses.splice(i, 1);
         }
       }
 
       // Decay ripples
-      tgts.forEach(tg => { if (tg.rip > 0) tg.rip = Math.max(0, tg.rip - dt * CFG.RIPPLE_DECAY); });
+
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -399,25 +390,7 @@
         ctx.arc(tg.x, tg.y, tg.r * CFG.TGT_INNER_R, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Gap-analysis warning ripple
-        if (i === CFG.TDEF.length - 1 && tg.rip > 0) {
-          const rr1 = tg.r + (1 - tg.rip) * CFG.RIP1_R_OFF;
-          ctx.strokeStyle = `rgba(${r},${g},${b},${tg.rip * CFG.RIP1_AL_MUL})`;
-          ctx.lineWidth = CFG.RIP1_LW;
-          ctx.beginPath();
-          ctx.arc(tg.x, tg.y, rr1, 0, Math.PI * 2);
-          ctx.stroke();
-          // second ring, offset
-          const rip2 = Math.max(0, tg.rip - CFG.RIP2_DEL);
-          if (rip2 > 0) {
-            const rr2 = tg.r + (1 - rip2) * CFG.RIP2_R_OFF;
-            ctx.strokeStyle = `rgba(${r},${g},${b},${rip2 * CFG.RIP2_AL_MUL})`;
-            ctx.lineWidth = CFG.RIP2_LW;
-            ctx.beginPath();
-            ctx.arc(tg.x, tg.y, rr2, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-        }
+        // Removed: gap-analysis warning ripple logic
 
         // Labels
         const lx = tg.x + tg.r + CFG.TEXT_X_OFF;
