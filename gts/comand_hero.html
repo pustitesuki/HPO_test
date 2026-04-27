@@ -21,10 +21,12 @@
     }
 
     #scene-container {
-      position: relative;
-      width: 1200px;
-      height: 1200px;
-      margin: 50px auto;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
       background: transparent !important;
       overflow: hidden;
     }
@@ -102,7 +104,7 @@
       FLAT_DURATION: 3.0, // camera transition time; after this → infinite flat rotation
 
       // Particles
-      MAX_PARTICLES: 1200,
+      MAX_PARTICLES: 1000,
       SPAWN_RATE_START: 100,
       SPAWN_RATE_END: 250,
       PARTICLE_SIZE_MIN: 5.0,
@@ -119,7 +121,7 @@
       // Grid on XZ plane (Y = 0) — viewed from above at angle
       GRID_COLS: 33,
       GRID_ROWS: 28,
-      GRID_SPACING: 12,
+      GRID_SPACING: 11,
 
       // Colors (suited for white/transparent background)
       COLOR_PRIMARY: new THREE.Color(0x00D4FF),
@@ -141,15 +143,15 @@
       ORDER_LINE_BREATHE: 0.25,
 
       // Connection lines
-      LINE_MAX_DISTANCE: 80,
-      LINE_OPACITY: 0.68,
+      LINE_MAX_DISTANCE: 70,
+      LINE_OPACITY: 0.75,
       LINE_FLICKER_SPEED: 0.6,
       LINE_FLICKER_THRESHOLD: 0.15,
 
       // Grid cell flash
       GRID_FLASH_COLOR: new THREE.Color(0x1DD6FF),
-      GRID_FLASH_RATE: 0.20,
-      GRID_FLASH_MAX_ALPHA: 0.25,
+      GRID_FLASH_RATE: 0.50,
+      GRID_FLASH_MAX_ALPHA: 0.15,
       GRID_FLASH_FADE_IN: 0.35,
       GRID_FLASH_HOLD: 0.20,
       GRID_FLASH_FADE_OUT: 0.90,
@@ -173,8 +175,8 @@
     // ═══════════════════════════════════════════════════════════════
     const container = document.getElementById('scene-container');
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(1200, 800);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const pixelRatio = window.innerWidth < 768 ? Math.min(window.devicePixelRatio, 1.25) : Math.min(window.devicePixelRatio, 2);
+    renderer.setPixelRatio(pixelRatio);
     renderer.setClearColor(0x000000, 0);
     renderer.setClearAlpha(0);
     renderer.domElement.style.background = 'transparent';
@@ -183,7 +185,7 @@
     const scene = new THREE.Scene();
     scene.background = null;
 
-    const camera = new THREE.PerspectiveCamera(CONFIG.CAM_FOV, 1200 / 800, 1, 2000);
+    const camera = new THREE.PerspectiveCamera(CONFIG.CAM_FOV, window.innerWidth / window.innerHeight, 1, 2000);
     const camAngleRad = CONFIG.CAM_ANGLE_DEG * Math.PI / 180;
     const baseCamY = Math.sin(camAngleRad) * CONFIG.CAM_DISTANCE;
     const baseCamZ = Math.cos(camAngleRad) * CONFIG.CAM_DISTANCE;
@@ -192,6 +194,16 @@
 
     const worldGroup = new THREE.Group();
     scene.add(worldGroup);
+
+    function resize() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      renderer.setSize(width, height);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', resize);
+    resize();
 
     // ═══════════════════════════════════════════════════════════════
     // Grid positions on XZ plane (Y = 0)
@@ -245,8 +257,9 @@
         varying vec4 vColor;
         void main() {
           vec2 center = gl_PointCoord - 0.5;
-          float dist = length(center);
-          if (dist > 0.5) discard;
+          float distSq = dot(center, center);
+          if (distSq > 0.25) discard;
+          float dist = sqrt(distSq);
           float glow = 1.0 - smoothstep(0.0, 0.5, dist);
           glow = pow(glow, 1.5);
           gl_FragColor = vec4(vColor.rgb, vColor.a * glow);
@@ -609,8 +622,12 @@
           for (let j = i + 1; j < activeCount && lineVertexCount < maxLines * 2; j++) {
             const pj = particles[j];
             const dx = pi.x - pj.x;
+            if (Math.abs(dx) >= maxDist) continue;
             const dy = pi.y - pj.y;
+            if (Math.abs(dy) >= maxDist) continue;
             const dz = pi.z - pj.z;
+            if (Math.abs(dz) >= maxDist) continue;
+
             const distSq = dx * dx + dy * dy + dz * dz;
             if (distSq < maxDistSq) {
               const dist = Math.sqrt(distSq);
@@ -623,10 +640,8 @@
                 const seed2 = (i * 31 + j * 97) % 1000 / 1000;
                 const seed3 = (i * 53 + j * 113) % 1000 / 1000;
                 const f = CONFIG.LINE_FLICKER_SPEED;
-                const flicker1 = Math.sin(animTime * f * (0.8 + seed1 * 0.8) + seed1 * 6.28);
-                const flicker2 = Math.sin(animTime * f * (1.3 + seed2 * 1.2) + seed2 * 6.28);
-                const flicker3 = Math.sin(animTime * f * (0.4 + seed3 * 0.5) + seed3 * 6.28);
-                const combined = flicker1 * 0.5 + flicker2 * 0.3 + flicker3 * 0.2;
+                const seedCombined = seed1 + seed2 * 0.5 + seed3 * 0.25;
+                const combined = Math.sin(animTime * f * (1.0 + seedCombined) + seedCombined * 6.28);
                 const thresh = CONFIG.LINE_FLICKER_THRESHOLD;
                 const visibility = Math.max(0, (combined - (-1 + thresh * 2)) / (2 - thresh * 2));
                 const smoothVis = visibility * visibility * (3 - 2 * visibility);
@@ -699,9 +714,9 @@
             tmpLabelVector.project(camera);
 
             if (tmpLabelVector.z < 1 && tmpLabelVector.z > -1) {
-              const x = (tmpLabelVector.x * 0.5 + 0.5) * 1200;
-              const y = -(tmpLabelVector.y * 0.5 - 0.5) * 800;
-              labelElements[i].style.transform = `translate(-50%, -50%) translate(${x}px, ${y - 22}px)`;
+              const x = (tmpLabelVector.x * 0.5 + 0.5) * window.innerWidth;
+              const y = -(tmpLabelVector.y * 0.5 - 0.5) * window.innerHeight;
+              labelElements[i].style.transform = `translate(-50%, -50%) translate3d(${x}px, ${y - 22}px, 0)`;
               labelElements[i].classList.add('visible');
             } else {
               labelElements[i].classList.remove('visible');
