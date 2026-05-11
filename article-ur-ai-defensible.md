@@ -6,6 +6,14 @@ Foundation models are extraordinarily capable, and they will become part of UR w
 
 The difference between AI you can deploy in regulated decision work and AI you cannot is rarely visible in the demo. It shows up later — when the system has to be defended, debugged, or improved. Three questions cut through the marketing faster than any feature checklist.
 
+:::framework
+THE GTS OPERATING FRAMEWORK · GTS COMAND
+Three questions. Three disciplines. One standard for **defensible AI**.
+01 | Control | Where does the human approval gate sit, and what happens when no reviewer acts before a determination goes out?
+02 | Evaluate | How do you measure whether the AI was right — and is your evaluator deterministic or just another probabilistic model?
+03 | Improve | When the AI is wrong, what exactly do you change, and how long does targeted, traceable remediation take?
+:::
+
 ---
 
 ## Question 01 — Control | Where does the **human approval gate** sit, and what happens when no reviewer acts?
