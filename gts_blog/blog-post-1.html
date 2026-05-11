@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Is Your UR AI Defensible? — Ground Truth Systems Blog</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ── Design tokens from groundtruthsystems.com ── */
+    :root {
+      --bg:           #ffffff;
+      --bg-off:       #f7f7f7;
+      --bg-dark:      #050505;
+      --bg-dark-2:    #0e0e0e;
+      --bg-card-dark: #111111;
+
+      --text:         #050505;
+      --text-muted:   #4f6e83;   /* rgb(79,110,131) */
+      --text-dim:     #798999;   /* rgb(121,137,155) */
+      --text-light:   #ffffff;
+
+      --accent:       #00d7ff;
+      --accent-soft:  rgba(0, 215, 255, 0.10);
+      --accent-glow:  rgba(0, 215, 255, 0.06);
+
+      --border:       #dedede;
+      --border-dark:  rgba(255,255,255,0.09);
+
+      --red:          #dc2626;
+      --red-soft:     rgba(220, 38, 38, 0.07);
+
+      --radius-sm:    8px;
+      --radius-md:    12px;
+      --radius-lg:    16px;
+      --radius-xl:    24px;
+
+      --col:          720px;   /* main article column */
+      --col-wide:     880px;   /* wide elements */
+
+      --font-body:    'Space Grotesk', sans-serif;
+      --font-display: 'Inter Tight', sans-serif;
+    }
+
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-weight: 400;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; text-decoration: none; }
+
+    /* ── Utility ── */
+    .u-center { max-width: var(--col); margin-left: auto; margin-right: auto; padding: 0 40px; }
+    .u-wide   { max-width: var(--col-wide); margin-left: auto; margin-right: auto; padding: 0 40px; }
+    .u-full   { width: 100%; }
+
+    .gap-xs  { height: 16px; }
+    .gap-sm  { height: 28px; }
+    .gap-md  { height: 48px; }
+    .gap-lg  { height: 72px; }
+    .gap-xl  { height: 104px; }
+
+    /* ══════════════════════════════════════
+       NAV
+    ══════════════════════════════════════ */
+    .nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1160px; margin: 0 auto; padding: 0 40px;
+      height: 62px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      font-family: var(--font-display);
+      font-weight: 600; font-size: 14px; letter-spacing: -0.02em;
+      color: var(--text);
+      display: flex; align-items: center; gap: 9px;
+    }
+    .nav-logo-mark {
+      width: 22px; height: 22px;
+      background: var(--bg-dark);
+      border-radius: 6px;
+      display: grid; place-items: center;
+    }
+    .nav-logo-mark::after {
+      content: '';
+      width: 8px; height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+    .nav-links {
+      display: flex; align-items: center; gap: 28px; list-style: none;
+    }
+    .nav-links a {
+      font-size: 14px; font-weight: 400; letter-spacing: -0.01em;
+      color: var(--text-muted);
+      transition: color 0.18s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-pill {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid rgba(0,215,255,0.25);
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+
+    /* ══════════════════════════════════════
+       ARTICLE HERO
+    ══════════════════════════════════════ */
+    .hero {
+      max-width: var(--col-wide); margin: 0 auto;
+      padding: 80px 40px 56px;
+    }
+    .hero-breadcrumb {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 32px;
+    }
+    .hero-tag {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid rgba(0,215,255,0.22);
+      padding: 4px 12px; border-radius: 20px;
+    }
+    .hero-sep {
+      width: 4px; height: 4px;
+      background: var(--border);
+      border-radius: 50%;
+    }
+    .hero-meta-item {
+      font-size: 13px; color: var(--text-dim); letter-spacing: -0.01em;
+    }
+
+    .hero h1 {
+      font-family: var(--font-body);
+      font-weight: 300;
+      font-size: clamp(36px, 5.5vw, 64px);
+      line-height: 1.04;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      margin-bottom: 28px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--text-muted);
+    }
+    .hero-subtitle {
+      font-size: clamp(16px, 2vw, 19px);
+      font-weight: 400;
+      line-height: 1.6;
+      color: var(--text-muted);
+      letter-spacing: -0.01em;
+      max-width: 580px;
+    }
+    .hero-author-row {
+      display: flex; align-items: center; gap: 14px;
+      margin-top: 36px;
+      padding-top: 28px;
+      border-top: 1px solid var(--border);
+    }
+    .hero-avatar {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: var(--bg-dark);
+      display: grid; place-items: center;
+      flex-shrink: 0;
+    }
+    .hero-avatar-initials {
+      font-family: var(--font-display);
+      font-size: 12px; font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.02em;
+    }
+    .hero-author-name {
+      font-size: 14px; font-weight: 500;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .hero-author-role {
+      font-size: 13px; color: var(--text-dim);
+    }
+
+    /* ══════════════════════════════════════
+       IMAGE PLACEHOLDERS
+    ══════════════════════════════════════ */
+    .img-wrap { max-width: var(--col-wide); margin: 0 auto; padding: 0 40px; }
+    .img-wrap.center { max-width: var(--col); }
+
+    .img-placeholder {
+      background: var(--bg-off);
+      border: 1.5px dashed #d1d1d1;
+      border-radius: var(--radius-lg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px;
+      color: #aaa;
+      position: relative;
+      overflow: hidden;
+    }
+    .img-placeholder::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        -45deg,
+        transparent, transparent 20px,
+        rgba(0,0,0,0.018) 20px, rgba(0,0,0,0.018) 21px
+      );
+    }
+    .img-placeholder-inner {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 8px;
+      position: relative; z-index: 1;
+    }
+    .img-placeholder-icon {
+      width: 32px; height: 32px; opacity: 0.5;
+    }
+    .img-placeholder-label {
+      font-size: 12px; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: #aaa;
+    }
+    .img-placeholder-hint {
+      font-size: 11px; color: #bbb;
+    }
+    .img-placeholder.h-hero  { height: 460px; }
+    .img-placeholder.h-lg    { height: 360px; }
+    .img-placeholder.h-md    { height: 280px; }
+    .img-placeholder.h-sm    { height: 200px; }
+
+    /* ══════════════════════════════════════
+       ARTICLE BODY TEXT
+    ══════════════════════════════════════ */
+    .body-text { max-width: var(--col); margin: 0 auto; padding: 0 40px; }
+
+    .body-text p {
+      font-size: 17px;
+      font-weight: 400;
+      line-height: 1.78;
+      color: rgba(5,5,5,0.82);
+      letter-spacing: -0.01em;
+      margin-bottom: 22px;
+    }
+    .body-text p:last-child { margin-bottom: 0; }
+    .body-text strong { color: var(--text); font-weight: 600; }
+    .body-text em { color: var(--text-muted); font-style: normal; }
+
+    /* Lead paragraph */
+    .lead-text { max-width: var(--col); margin: 0 auto; padding: 0 40px; }
+    .lead-text p {
+      font-size: clamp(19px, 2.5vw, 22px);
+      font-weight: 300;
+      line-height: 1.58;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    /* ══════════════════════════════════════
+       SECTION HEADINGS
+    ══════════════════════════════════════ */
+    .section-head { max-width: var(--col); margin: 0 auto; padding: 0 40px; }
+    .section-kicker {
+      font-family: var(--font-display);
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.10em; text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 14px;
+    }
+    .section-head h2 {
+      font-family: var(--font-body);
+      font-weight: 300;
+      font-size: clamp(24px, 3.5vw, 36px);
+      line-height: 1.18;
+      letter-spacing: -0.025em;
+      color: var(--text);
+    }
+    .section-head h2 strong {
+      font-weight: 600;
+    }
+
+    /* Divider */
+    .divider { max-width: var(--col); margin: 0 auto; padding: 0 40px; }
+    .divider hr { border: none; border-top: 1px solid var(--border); }
+
+    /* ══════════════════════════════════════
+       FRAMEWORK CARD (dark)
+    ══════════════════════════════════════ */
+    .framework-wrap { max-width: var(--col-wide); margin: 0 auto; padding: 0 40px; }
+    .framework-card {
+      background: var(--bg-dark);
+      border-radius: var(--radius-xl);
+      padding: 52px 56px;
+      overflow: hidden;
+      position: relative;
+    }
+    .framework-card::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(0,215,255,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .framework-eyebrow {
+      font-family: var(--font-display);
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.10em; text-transform: uppercase;
+      color: rgba(255,255,255,0.35);
+      margin-bottom: 10px;
+    }
+    .framework-title {
+      font-family: var(--font-body);
+      font-size: clamp(18px, 2.5vw, 26px);
+      font-weight: 300;
+      letter-spacing: -0.025em;
+      color: var(--text-light);
+      margin-bottom: 48px;
+    }
+    .framework-title strong {
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .framework-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+    }
+    .fw-item {}
+    .fw-item-num {
+      font-family: var(--font-display);
+      font-size: 48px; font-weight: 600;
+      letter-spacing: -0.05em; line-height: 1;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+    .fw-item-title {
+      font-family: var(--font-body);
+      font-size: 20px; font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--text-light);
+      margin-bottom: 10px;
+    }
+    .fw-item-body {
+      font-size: 14px; line-height: 1.6;
+      color: rgba(255,255,255,0.5);
+      letter-spacing: -0.01em;
+    }
+    .fw-item-border {
+      width: 32px; height: 2px;
+      background: var(--accent);
+      margin-bottom: 20px;
+    }
+
+    /* ══════════════════════════════════════
+       PULL QUOTES
+    ══════════════════════════════════════ */
+    .pull-quote-wrap { max-width: var(--col-wide); margin: 0 auto; padding: 0 40px; }
+
+    .pull-quote {
+      padding: 36px 44px;
+      border-left: 3px solid var(--accent);
+      background: var(--accent-glow);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    }
+    .pull-quote-text {
+      font-family: var(--font-body);
+      font-size: clamp(18px, 2.2vw, 22px);
+      font-weight: 300;
+      line-height: 1.5;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .pull-quote-attr {
+      margin-top: 14px;
+      font-size: 12px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    /* Dark pull quote */
+    .pull-quote.dark {
+      background: var(--bg-dark);
+      border-color: var(--accent);
+    }
+    .pull-quote.dark .pull-quote-text { color: rgba(255,255,255,0.9); }
+
+    /* ══════════════════════════════════════
+       CALLOUT BOXES
+    ══════════════════════════════════════ */
+    .callout-wrap { max-width: var(--col); margin: 0 auto; padding: 0 40px; }
+
+    .callout {
+      border-radius: var(--radius-md);
+      padding: 24px 28px;
+    }
+    .callout.info {
+      background: rgba(79,110,131,0.07);
+      border: 1px solid rgba(79,110,131,0.2);
+    }
+    .callout.warning {
+      background: var(--red-soft);
+      border: 1px solid rgba(220,38,38,0.18);
+    }
+    .callout.note {
+      background: var(--bg-off);
+      border: 1px solid var(--border);
+    }
+    .callout-label {
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.09em; text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .callout.info    .callout-label { color: var(--text-muted); }
+    .callout.warning .callout-label { color: var(--red); }
+    .callout.note    .callout-label { color: var(--text-dim); }
+    .callout-body {
+      font-size: 15px; line-height: 1.65;
+      color: rgba(5,5,5,0.76);
+    }
+    .callout-body strong { color: var(--text); font-weight: 600; }
+
+    /* ══════════════════════════════════════
+       TWO-COLUMN SIDE BLOCK
+    ══════════════════════════════════════ */
+    .side-block-wrap { max-width: var(--col-wide); margin: 0 auto; padding: 0 40px; }
+    .side-block {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 40px;
+      align-items: start;
+    }
+    .side-note {
+      background: var(--bg-off);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 24px;
+    }
+    .side-note-label {
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+    .side-note-body {
+      font-size: 14px; line-height: 1.65;
+      color: rgba(5,5,5,0.7);
+    }
+    .side-note-body strong { color: var(--text); font-weight: 600; }
+    .side-note-list {
+      list-style: none;
+      display: flex; flex-direction: column; gap: 8px;
+      margin-top: 12px;
+    }
+    .side-note-list li {
+      font-size: 14px; line-height: 1.5;
+      color: rgba(5,5,5,0.7);
+      padding-left: 16px;
+      position: relative;
+    }
+    .side-note-list li::before {
+      content: '';
+      position: absolute; left: 0; top: 9px;
+      width: 5px; height: 5px;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+    .side-note-body-text { font-size: 15px; line-height: 1.7; color: rgba(5,5,5,0.75); }
+
+    /* ══════════════════════════════════════
+       ARCHITECTURE KEY (inline highlight)
+    ══════════════════════════════════════ */
+    .arch-key { max-width: var(--col); margin: 0 auto; padding: 0 40px; }
+    .arch-key-inner {
+      background: var(--bg-dark);
+      border-radius: var(--radius-lg);
+      padding: 32px 36px;
+      display: flex; flex-direction: column; gap: 20px;
+    }
+    .arch-key-label {
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.10em; text-transform: uppercase;
+      color: rgba(255,255,255,0.3);
+    }
+    .arch-row {
+      display: flex; align-items: baseline; gap: 14px;
+    }
+    .arch-layer {
+      font-family: var(--font-display);
+      font-size: 13px; font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--accent);
+      white-space: nowrap;
+      min-width: 160px;
+    }
+    .arch-desc {
+      font-size: 14px; line-height: 1.6;
+      color: rgba(255,255,255,0.55);
+    }
+    .arch-divider { border: none; border-top: 1px solid rgba(255,255,255,0.07); }
+
+    /* ══════════════════════════════════════
+       ARTICLE FOOTER / ABOUT
+    ══════════════════════════════════════ */
+    .article-footer {
+      max-width: var(--col); margin: 0 auto;
+      padding: 64px 40px 80px;
+    }
+    .article-footer hr { border: none; border-top: 1px solid var(--border); margin-bottom: 40px; }
+    .about-label {
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.09em; text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+    }
+    .about-text {
+      font-size: 15px; line-height: 1.72;
+      color: var(--text-muted);
+    }
+    .about-text strong { color: var(--text); font-weight: 600; }
+    .about-text a { color: var(--accent); border-bottom: 1px solid rgba(0,215,255,0.3); }
+
+    /* ══════════════════════════════════════
+       SITE FOOTER
+    ══════════════════════════════════════ */
+    .site-footer {
+      background: var(--bg-dark);
+      padding: 44px 40px;
+    }
+    .site-footer-inner {
+      max-width: 1160px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 20px;
+    }
+    .footer-logo {
+      font-family: var(--font-display);
+      font-size: 13px; font-weight: 600;
+      letter-spacing: -0.02em;
+      color: rgba(255,255,255,0.55);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .footer-logo-dot {
+      width: 7px; height: 7px;
+      background: var(--accent); border-radius: 50%;
+    }
+    .footer-copy {
+      font-size: 13px;
+      color: rgba(255,255,255,0.25);
+      letter-spacing: -0.01em;
+    }
+
+    /* ══════════════════════════════════════
+       RESPONSIVE
+    ══════════════════════════════════════ */
+    @media (max-width: 720px) {
+      .u-center, .u-wide, .body-text, .lead-text, .section-head,
+      .divider, .callout-wrap, .arch-key, .pull-quote-wrap,
+      .framework-wrap, .side-block-wrap, .img-wrap { padding: 0 20px; }
+
+      .hero { padding: 48px 20px 40px; }
+      .framework-card { padding: 32px 28px; }
+      .framework-grid { grid-template-columns: 1fr; gap: 28px; }
+      .side-block { grid-template-columns: 1fr; }
+      .nav-inner { padding: 0 20px; }
+      .nav-links { display: none; }
+      .site-footer { padding: 32px 20px; }
+      .site-footer-inner { flex-direction: column; align-items: flex-start; }
+      .article-footer { padding: 48px 20px 64px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ NAV ════════════════════════════════════════ -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <div class="nav-logo-mark"></div>
+      Ground Truth Systems
+    </a>
+    <ul class="nav-links">
+      <li><a href="#">Solution</a></li>
+      <li><a href="#">Research</a></li>
+      <li><a href="#">About</a></li>
+      <li><span class="nav-pill">Blog</span></li>
+    </ul>
+  </div>
+</nav>
+
+
+<!-- ══ HERO ═══════════════════════════════════════ -->
+<header class="hero">
+  <div class="hero-breadcrumb">
+    <span class="hero-tag">UR AI · Procurement</span>
+    <span class="hero-sep"></span>
+    <span class="hero-meta-item">May 2025</span>
+    <span class="hero-sep"></span>
+    <span class="hero-meta-item">8 min read</span>
+  </div>
+
+  <h1>Is Your UR AI <em>Defensible?</em><br>Three Questions to Ask<br>Before You Buy</h1>
+  <p class="hero-subtitle">Foundation models will enter utilization review. The question is which architecture you can still operate — and defend — eighteen months from now.</p>
+
+  <div class="hero-author-row">
+    <div class="hero-avatar"><span class="hero-avatar-initials">GTS</span></div>
+    <div>
+      <div class="hero-author-name">Ground Truth Systems</div>
+      <div class="hero-author-role">Clinical AI Governance</div>
+    </div>
+  </div>
+</header>
+
+
+<!-- ══ HERO IMAGE ═════════════════════════════════ -->
+<div class="img-wrap">
+  <div class="img-placeholder h-hero">
+    <div class="img-placeholder-inner">
+      <svg class="img-placeholder-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="32" height="32" rx="6" fill="rgba(5,5,5,0.06)"/>
+        <path d="M5 24l8-9 5 6 4-5.5 5 8.5H5z" fill="rgba(5,5,5,0.08)"/>
+        <circle cx="22" cy="10" r="3" fill="rgba(5,5,5,0.08)"/>
+      </svg>
+      <span class="img-placeholder-label">Hero Illustration</span>
+      <span class="img-placeholder-hint">1200 × 600 · UR workflow / AI governance diagram</span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ INTRO ══════════════════════════════════════ -->
+<div class="gap-lg"></div>
+
+<div class="lead-text">
+  <p>If you run utilization review at a payer, TPA, IRO, PBM, or managed care organization, you are about to be sold a lot of AI. Most of it will demo well. Some of it will pilot well. Much of it will struggle the first time a determination is challenged, an auditor asks how the system moved from documentation to denial, or a physician reviewer overrides the AI and you need to explain why.</p>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="body-text">
+  <p>Foundation models are extraordinarily capable, and they will become part of UR workflows. The question is not whether to use AI. It is <strong>which architecture you can defend eighteen months from now</strong>.</p>
+  <p>The difference between AI you can deploy in regulated decision work and AI you cannot is rarely visible in the demo. It shows up later — when the system has to be defended, debugged, or improved.</p>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="body-text">
+  <p>Three questions cut through the marketing faster than any feature checklist. They map to the three disciplines any AI in regulated decision work has to get right. We call them the <strong>Control, Evaluate, Improve</strong> framework, and it is the operating discipline of GTS COMAND, our agent operations platform.</p>
+</div>
+
+
+<!-- ══ FRAMEWORK CARD ════════════════════════════ -->
+<div class="gap-lg"></div>
+
+<div class="framework-wrap">
+  <div class="framework-card">
+    <div class="framework-eyebrow">The GTS Operating Framework</div>
+    <div class="framework-title">Three questions. Three disciplines. One standard for <strong>defensible AI</strong>.</div>
+
+    <div class="framework-grid">
+      <div class="fw-item">
+        <div class="fw-item-num">01</div>
+        <div class="fw-item-border"></div>
+        <div class="fw-item-title">Control</div>
+        <div class="fw-item-body">Where does the human approval gate sit — and what happens when no reviewer action is taken before a determination goes out?</div>
+      </div>
+      <div class="fw-item">
+        <div class="fw-item-num">02</div>
+        <div class="fw-item-border"></div>
+        <div class="fw-item-title">Evaluate</div>
+        <div class="fw-item-body">How do you measure whether the AI was right — and is your evaluator deterministic, or just another probabilistic model?</div>
+      </div>
+      <div class="fw-item">
+        <div class="fw-item-num">03</div>
+        <div class="fw-item-border"></div>
+        <div class="fw-item-title">Improve</div>
+        <div class="fw-item-body">When the AI is wrong, what exactly do you change — and how long does targeted, traceable remediation actually take?</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     SECTION 1 · CONTROL
+══════════════════════════════════════════════════ -->
+<div class="gap-xl"></div>
+<div class="divider"><hr></div>
+<div class="gap-lg"></div>
+
+<div class="section-head">
+  <div class="section-kicker">Question 01 — Control</div>
+  <h2>Where does the <strong>human approval gate</strong> sit,<br>and what happens when no reviewer acts?</h2>
+</div>
+
+<div class="gap-md"></div>
+
+<div class="body-text">
+  <p>The right answer is that any AI-generated determination that leaves the system does so only after an explicit authorization step appropriate to the decision type, risk level, and governing rules. For adverse or complex determinations, that means affirmative approval by the credentialed reviewer, with an immutable record of that approval.</p>
+</div>
+
+<div class="gap-sm"></div>
+
+<!-- Image: approval gate flow diagram -->
+<div class="img-wrap">
+  <div class="img-placeholder h-md">
+    <div class="img-placeholder-inner">
+      <svg class="img-placeholder-icon" viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx="6" fill="rgba(5,5,5,0.06)"/>
+        <rect x="4" y="8"  width="10" height="6" rx="2" fill="rgba(5,5,5,0.08)"/>
+        <rect x="18" y="8" width="10" height="6" rx="2" fill="rgba(5,5,5,0.08)"/>
+        <rect x="11" y="18" width="10" height="6" rx="2" fill="rgba(0,215,255,0.15)"/>
+        <line x1="9" y1="14" x2="16" y2="18" stroke="rgba(5,5,5,0.12)" stroke-width="1.5"/>
+        <line x1="23" y1="14" x2="16" y2="18" stroke="rgba(5,5,5,0.12)" stroke-width="1.5"/>
+      </svg>
+      <span class="img-placeholder-label">Diagram · Approval Gate Flow</span>
+      <span class="img-placeholder-hint">900 × 360 · Human-in-the-loop control flow — AI draft → reviewer gate → authorized release</span>
+    </div>
+  </div>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="callout-wrap">
+  <div class="callout warning">
+    <div class="callout-label">Red Flag Answer</div>
+    <div class="callout-body">
+      "The AI generates the determination and your reviewer can review it." That is not a control — that is a hope that your reviewer is paying attention under production volume. <strong>Vigilance does not scale</strong>, and any architecture that depends on it is a compliance risk waiting to happen.
+    </div>
+  </div>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="body-text">
+  <p>A useful follow-up: ask the vendor what happens when a queued determination approaches a statutory or contractual deadline without reviewer action. Does the system escalate to the right human, lock external release, preserve the audit trail, and record the missed or late action? Or does it silently release the determination because the clock ran out?</p>
+</div>
+
+<div class="gap-sm"></div>
+
+<!-- Side block: what to test -->
+<div class="side-block-wrap">
+  <div class="side-block">
+    <div class="body-text" style="padding:0">
+      <p>The correct system does not silently release anything. It escalates, records the event, preserves the audit trail, and prevents external release unless the required authorization occurs. Every event — whether action or inaction — is captured with a timestamp and actor.</p>
+      <p>You cannot manage what you cannot control. The approval gate is not a convenience feature. It is where the management of an AI agent actually begins.</p>
+    </div>
+    <div class="side-note">
+      <div class="side-note-label">Test This In Demo</div>
+      <div class="side-note-body">
+        <p class="side-note-body-text">Ask the vendor to show what happens when a determination sits in queue past its deadline with no reviewer action taken.</p>
+        <ul class="side-note-list">
+          <li>Does it escalate automatically?</li>
+          <li>Is external release blocked?</li>
+          <li>Is the missed action recorded in the audit trail?</li>
+          <li>Who gets notified, and how?</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="pull-quote-wrap">
+  <div class="pull-quote dark">
+    <div class="pull-quote-text">The approval gate is where the management of an AI agent actually begins. Everything upstream is generation. Everything downstream is accountability. The gate is the handoff between the two.</div>
+    <div class="pull-quote-attr">Control Principle · GTS COMAND</div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     SECTION 2 · EVALUATE
+══════════════════════════════════════════════════ -->
+<div class="gap-xl"></div>
+<div class="divider"><hr></div>
+<div class="gap-lg"></div>
+
+<div class="section-head">
+  <div class="section-kicker">Question 02 — Evaluate</div>
+  <h2>How do you measure whether the AI was right — and is your <strong>evaluator deterministic?</strong></h2>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="body-text">
+  <p><em>This is the question that separates serious architectures from impressive demos.</em></p>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="body-text">
+  <p>If the answer is some variant of "we use another AI model to score the first model's output," you are looking at a probabilistic system evaluated by another probabilistic system. The two share training distributions, biases, and blind spots. When they agree, you have correlated probability. You do not have correctness.</p>
+  <p>Model-based scoring can be useful as a secondary QA signal, but it should not be the primary correctness mechanism for a regulated determination. A second model may help flag issues, but it cannot substitute for an explicit guideline representation with criteria, satisfaction logic, and source-linked evidence.</p>
+</div>
+
+<div class="gap-sm"></div>
+
+<!-- Architecture key -->
+<div class="arch-key">
+  <div class="arch-key-inner">
+    <div class="arch-key-label">Architecture Principle</div>
+    <div class="arch-row">
+      <div class="arch-layer">Foundation Model →</div>
+      <div class="arch-desc">Does the language work: reads clinical documentation, extracts facts, structures findings for the adjudication layer.</div>
+    </div>
+    <hr class="arch-divider">
+    <div class="arch-row">
+      <div class="arch-layer">Ontology + Rules Engine →</div>
+      <div class="arch-desc">Does the adjudication work: applies structured guideline criteria, runs explicit satisfaction logic, produces traceable verdicts.</div>
+    </div>
+    <hr class="arch-divider">
+    <div class="arch-row">
+      <div class="arch-layer">Evaluation →</div>
+      <div class="arch-desc">Runs against the rules engine — not against another model. The reference is deterministic, not probabilistic.</div>
+    </div>
+  </div>
+</div>
+
+<div class="gap-md"></div>
+
+<!-- Image: deterministic vs probabilistic -->
+<div class="img-wrap">
+  <div class="img-placeholder h-md">
+    <div class="img-placeholder-inner">
+      <svg class="img-placeholder-icon" viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx="6" fill="rgba(5,5,5,0.06)"/>
+        <circle cx="10" cy="16" r="6" stroke="rgba(5,5,5,0.1)" stroke-width="1.5"/>
+        <circle cx="22" cy="16" r="6" stroke="rgba(0,215,255,0.25)" stroke-width="1.5"/>
+        <path d="M16 10v12" stroke="rgba(0,215,255,0.35)" stroke-width="1.5" stroke-dasharray="2 2"/>
+      </svg>
+      <span class="img-placeholder-label">Diagram · Probabilistic vs. Deterministic Evaluation</span>
+      <span class="img-placeholder-hint">900 × 360 · Model-on-model scoring vs. rules engine evaluation — correlated probability vs. correctness</span>
+    </div>
+  </div>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="body-text">
+  <p>A defensible answer connects evaluation to a deterministic source: a structured representation of the applied guideline — MTUS, ODG, ACOEM, the relevant National Coverage Determination — with explicit criteria and explicit satisfaction logic. The system does not just say "this met medical necessity." It says <strong>which criterion was satisfied, what evidence satisfied it, and how that evidence was extracted from the clinical record</strong>.</p>
+  <p>For organizations operating under accreditation or delegated-review obligations, the question is not merely whether the output looks reasonable, but whether the clinical review criteria and decision logic can be shown.</p>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="callout-wrap">
+  <div class="callout warning">
+    <div class="callout-label">Red Flag Answer</div>
+    <div class="callout-body">
+      "We have proprietary scoring." That is not concrete — it describes a black box. <strong>Black-box evaluation layers are difficult to defend under regulatory scrutiny.</strong> If the vendor cannot articulate criteria, satisfaction logic, and source linkage in specific terms, you cannot verify correctness. You can only hope for it.
+    </div>
+  </div>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="pull-quote-wrap">
+  <div class="pull-quote">
+    <div class="pull-quote-text">You cannot improve what you cannot measure. Evaluation against a deterministic reference — not against another model — is the precondition for everything that comes next.</div>
+    <div class="pull-quote-attr">Evaluation Principle · GTS COMAND</div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     SECTION 3 · IMPROVE
+══════════════════════════════════════════════════ -->
+<div class="gap-xl"></div>
+<div class="divider"><hr></div>
+<div class="gap-lg"></div>
+
+<div class="section-head">
+  <div class="section-kicker">Question 03 — Improve</div>
+  <h2>When the AI is wrong, <strong>what exactly do you change</strong> — and how long does it take?</h2>
+</div>
+
+<div class="gap-md"></div>
+
+<div class="body-text">
+  <p>Every system is wrong some of the time. The question is what happens next.</p>
+</div>
+
+<div class="gap-sm"></div>
+
+<!-- Side block: weak vs good answer -->
+<div class="side-block-wrap">
+  <div class="side-block">
+    <div class="body-text" style="padding:0">
+      <p><strong>A weak answer:</strong> "We retrain the model." Retraining can be versioned, but it is a blunt remediation path. It changes behavior diffusely, requires broad regression testing, and makes it difficult to prove that a targeted guideline correction did not affect unrelated decisions. In a regulated environment, diffuse change is a version control problem.</p>
+      <p><strong>A good answer:</strong> errors are localized. A misextracted clinical fact is fixed in the extraction layer. A misapplied guideline is fixed in the structured guideline representation. A new piece of evidence is added to the relevant criterion. Each fix is targeted, traceable, and does not regress unrelated determinations.</p>
+    </div>
+    <div>
+      <div class="side-note">
+        <div class="side-note-label">Layered Remediation</div>
+        <div class="side-note-body">
+          <ul class="side-note-list">
+            <li><strong>Extraction error?</strong> Fix in the extraction layer.</li>
+            <li><strong>Misapplied guideline?</strong> Fix in the structured guideline representation.</li>
+            <li><strong>New evidence?</strong> Add to the relevant criterion.</li>
+            <li><strong>Reviewer override?</strong> Captured with rationale, not just logged.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="gap-md"></div>
+
+<!-- Image: layered architecture -->
+<div class="img-wrap">
+  <div class="img-placeholder h-lg">
+    <div class="img-placeholder-inner">
+      <svg class="img-placeholder-icon" viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx="6" fill="rgba(5,5,5,0.06)"/>
+        <rect x="4"  y="22" width="24" height="4" rx="1.5" fill="rgba(5,5,5,0.08)"/>
+        <rect x="6"  y="15" width="20" height="4" rx="1.5" fill="rgba(5,5,5,0.10)"/>
+        <rect x="8"  y="8"  width="16" height="4" rx="1.5" fill="rgba(0,215,255,0.18)"/>
+      </svg>
+      <span class="img-placeholder-label">Diagram · Layered Remediation Architecture</span>
+      <span class="img-placeholder-hint">900 × 440 · Extraction layer / guideline representation / evidence criteria — targeted fixes, no diffuse regression</span>
+    </div>
+  </div>
+</div>
+
+<div class="gap-md"></div>
+
+<div class="pull-quote-wrap">
+  <div class="pull-quote dark">
+    <div class="pull-quote-text">Can you replay a determination from twelve months ago against the exact rule set, evidence state, extraction output, model version, and reviewer action history that existed at the time — and produce an auditable record of why that determination was reached?</div>
+    <div class="pull-quote-attr">The Temporal Versioning Test</div>
+  </div>
+</div>
+
+<div class="gap-md"></div>
+
+<div class="body-text">
+  <p>If the answer is no, the system cannot demonstrate why a determination from twelve months ago was reached on the logic that was then in effect. If the answer is yes, you have temporal versioning, and you can defend any prior decision on the rules and the actions that produced it.</p>
+  <p>This is the difference between a system that improves over time and a system that drifts. In a regulated environment, <strong>drift is a liability you cannot manage</strong>.</p>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     SECTION · IN PRACTICE
+══════════════════════════════════════════════════ -->
+<div class="gap-xl"></div>
+<div class="divider"><hr></div>
+<div class="gap-lg"></div>
+
+<div class="section-head">
+  <div class="section-kicker">In Practice</div>
+  <h2>What this looks like in a <strong>real procurement conversation</strong></h2>
+</div>
+
+<div class="gap-md"></div>
+
+<div class="body-text">
+  <p>Run these three questions in a real procurement conversation and the field thins quickly. Vendors selling probabilistic-on-probabilistic architectures will talk around the second question. Vendors without a real control plane will reframe the first question as "trust your reviewers." Vendors built on retraining loops will treat the third question as a roadmap item.</p>
+  <p>The vendors who pass all three are not the ones with the loudest marketing. They are the ones who have made architectural commitments that match the standard the work actually requires.</p>
+</div>
+
+<div class="gap-sm"></div>
+
+<div class="callout-wrap">
+  <div class="callout info">
+    <div class="callout-label">Key Insight</div>
+    <div class="callout-body">
+      These questions are not anti-AI. They are <strong>pro-deployment</strong>. The more consequential the workflow, the more important it becomes to separate language generation from authorization, evaluation, and remediation. Foundation models should make reviewers faster and better informed. They should not be the unchecked source of regulated determinations.
+    </div>
+  </div>
+</div>
+
+<div class="gap-sm"></div>
+
+<!-- Image: procurement evaluation -->
+<div class="img-wrap center">
+  <div class="img-placeholder h-sm">
+    <div class="img-placeholder-inner">
+      <svg class="img-placeholder-icon" viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx="6" fill="rgba(5,5,5,0.06)"/>
+        <path d="M8 20l5-6 4 5 3-4 4 5" stroke="rgba(0,215,255,0.3)" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="8" cy="20" r="2" fill="rgba(0,215,255,0.35)"/>
+        <circle cx="24" cy="20" r="2" fill="rgba(0,215,255,0.35)"/>
+      </svg>
+      <span class="img-placeholder-label">Illustration · Procurement Scorecard</span>
+      <span class="img-placeholder-hint">720 × 240 · Control / Evaluate / Improve vendor comparison</span>
+    </div>
+  </div>
+</div>
+
+<div class="gap-md"></div>
+
+<div class="body-text">
+  <p>That is the lens worth bringing into every demo. Not "is this AI impressive," but <strong>"is this AI defensible."</strong> The first question is fun. The second is the one that determines whether you can still operate the system in eighteen months without an incident.</p>
+</div>
+
+
+<!-- ══ ARTICLE FOOTER ════════════════════════════ -->
+<div class="article-footer">
+  <hr>
+  <div class="about-label">About Ground Truth Systems</div>
+  <p class="about-text">
+    Ground Truth Systems builds deterministic governance for regulated agentic systems. Regulated medical decision support is our first vertical. <strong>GTS COMAND</strong> is the agent operations platform that runs the Control, Evaluate, Improve framework. <strong>GTS CORE</strong> is the Clinical Ontology and Reasoning Engine that structures guidelines and runs adjudication logic. Learn more at <a href="https://www.groundtruthsystems.com">groundtruthsystems.com</a>.
+  </p>
+</div>
+
+
+<!-- ══ SITE FOOTER ════════════════════════════════ -->
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <div class="footer-logo">
+      <span class="footer-logo-dot"></span>
+      Ground Truth Systems
+    </div>
+    <div class="footer-copy">© 2025 Ground Truth Systems. All rights reserved.</div>
+  </div>
+</footer>
+
+</body>
+</html>
