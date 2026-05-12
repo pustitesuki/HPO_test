@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Insights — Ground Truth Systems</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg:          #ffffff;
+      --bg-off:      #f5f5f5;
+      --bg-dark:     #050505;
+      --text:        #050505;
+      --text-muted:  #4f6e83;
+      --text-dim:    #798999;
+      --accent:      #00d7ff;
+      --accent-bg:   rgba(0,215,255,0.08);
+      --accent-bdr:  rgba(0,215,255,0.22);
+      --border:      #e2e2e2;
+      --border-dark: rgba(255,255,255,0.09);
+      --wide:        1100px;
+      --r:           12px;
+      --font:        'Space Grotesk', sans-serif;
+      --font-d:      'Inter Tight', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+
+    .w { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
+
+    /* ═══ NAV ═══════════════════════════════════════════════ */
+    .nav-top {
+      position: sticky; top: 0; z-index: 100;
+      height: 60px;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-in {
+      max-width: var(--wide); margin: 0 auto; padding: 0 24px;
+      height: 100%;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      font-family: var(--font-d);
+      font-size: 15px; font-weight: 600; letter-spacing: -.02em;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .nav-logo-icon {
+      width: 20px; height: 20px; background: var(--bg-dark);
+      border-radius: 5px; display: grid; place-items: center;
+    }
+    .nav-logo-icon::after {
+      content: ''; width: 7px; height: 7px;
+      background: var(--accent); border-radius: 50%;
+    }
+    .nav-links { display: flex; gap: 24px; list-style: none; align-items: center; }
+    .nav-links a { font-size: 15px; color: var(--text-muted); transition: color .15s; }
+    .nav-links a:hover { color: var(--text); }
+    .nav-badge {
+      font-size: 12px; font-weight: 600; letter-spacing: .07em;
+      text-transform: uppercase; color: var(--accent);
+      background: rgba(0,215,255,.1); border: 1px solid rgba(0,215,255,.25);
+      padding: 3px 10px; border-radius: 20px;
+    }
+
+    /* ═══ HERO — compact white ═══════════════════════════════ */
+    .hero {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 52px 0 28px;
+    }
+    .hero-eyebrow {
+      font-family: var(--font-d);
+      font-size: 12px; font-weight: 600; letter-spacing: .10em;
+      text-transform: uppercase; color: var(--accent);
+      margin-bottom: 16px;
+    }
+    .hero-h1 {
+      font-family: var(--font);
+      font-size: clamp(36px, 5vw, 58px);
+      font-weight: 300; line-height: 1.05; letter-spacing: -.04em;
+      color: var(--text); margin-bottom: 16px;
+    }
+    .hero-h1 strong { font-weight: 600; }
+    .hero-sub {
+      font-size: 18px; font-weight: 400; line-height: 1.65;
+      color: var(--text-muted); max-width: 540px;
+      margin-bottom: 48px; letter-spacing: -.01em;
+    }
+    .hero-pills {
+      display: flex; gap: 28px; flex-wrap: wrap;
+    }
+    .hero-pill {
+      font-family: var(--font-d); font-size: 13px; font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--text-dim);
+      transition: color .2s;
+    }
+    .hero-pill:hover, .hero-pill.active { color: var(--text); }
+
+    /* ═══ SECTION SHELL ════════════════════════════════════ */
+    .section { padding: 80px 0; }
+    .section-head {
+      display: flex; align-items: flex-end;
+      justify-content: space-between; margin-bottom: 40px;
+    }
+    .section-eyebrow {
+      font-family: var(--font-d); font-size: 12px; font-weight: 600;
+      letter-spacing: .10em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 10px;
+    }
+    .section-title {
+      font-family: var(--font); font-size: clamp(26px, 3.3vw, 34px);
+      font-weight: 300; letter-spacing: -.025em; color: var(--text);
+    }
+    .section-title strong { font-weight: 600; }
+
+    /* ═══ ARROW BUTTONS ════════════════════════════════════ */
+    .arrow-pair {
+      display: flex; align-items: center; gap: 16px;
+      flex-shrink: 0;
+    }
+    .arrow-btn {
+      background: none; border: none; padding: 0;
+      color: var(--text-dim);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: color .15s, opacity .15s;
+      flex-shrink: 0;
+    }
+    .arrow-btn:hover:not(:disabled) { color: var(--text); }
+    .arrow-btn:disabled { opacity: 0.22; cursor: default; }
+    .arrow-btn svg { display: block; }
+
+    /* ═══ CAROUSEL VIEWPORT ════════════════════════════════ */
+    .carousel-viewport { overflow: hidden; width: 100%; }
+    .carousel-track {
+      display: flex; gap: 24px;
+      transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: transform;
+    }
+    .carousel-track > * { flex: 0 0 calc((100% - 48px) / 3); min-width: 0; }
+
+    /* ═══ VIDEO CARDS ══════════════════════════════════════ */
+    .video-card { cursor: pointer; }
+    .video-thumb {
+      aspect-ratio: 16/9; background: var(--bg-off);
+      border-radius: var(--r); overflow: hidden;
+      position: relative; margin-bottom: 14px;
+    }
+    .video-thumb-bg {
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, #0d1117 0%, #1a2332 50%, #0a0f1a 100%);
+    }
+    .video-thumb-bg::after {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        -55deg, transparent, transparent 24px,
+        rgba(0,215,255,.03) 24px, rgba(0,215,255,.03) 25px
+      );
+    }
+    .video-play {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .2s;
+    }
+    .video-card:hover .video-play { background: rgba(0,0,0,.18); }
+    .video-play-btn {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: rgba(255,255,255,.12);
+      border: 1.5px solid rgba(255,255,255,.22);
+      display: flex; align-items: center; justify-content: center;
+      transition: background .2s, transform .2s;
+    }
+    .video-card:hover .video-play-btn {
+      background: var(--accent); border-color: var(--accent); transform: scale(1.08);
+    }
+    .video-play-btn svg { margin-left: 3px; }
+    .video-card:hover .video-play-btn svg path { fill: var(--bg-dark); }
+    .video-duration {
+      position: absolute; bottom: 10px; right: 10px;
+      font-family: var(--font-d); font-size: 12px; font-weight: 600;
+      color: #fff; background: rgba(0,0,0,.72);
+      padding: 2px 7px; border-radius: 4px; letter-spacing: .02em;
+    }
+    .video-tag {
+      position: absolute; top: 10px; left: 10px;
+      font-family: var(--font-d); font-size: 11px; font-weight: 600;
+      letter-spacing: .07em; text-transform: uppercase;
+      color: var(--accent); background: rgba(0,215,255,.12);
+      border: 1px solid rgba(0,215,255,.25);
+      padding: 2px 8px; border-radius: 20px;
+    }
+    .video-meta { display: flex; gap: 10px; align-items: flex-start; }
+    .video-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--bg-dark); border: 1.5px solid var(--border);
+      flex-shrink: 0; display: grid; place-items: center;
+    }
+    .video-avatar-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+    .video-info { flex: 1; min-width: 0; }
+    .video-title {
+      font-size: 15px; font-weight: 600; line-height: 1.4;
+      color: var(--text); letter-spacing: -.01em; margin-bottom: 5px;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .video-sub { font-size: 13px; color: var(--text-dim); }
+
+    /* ═══ DOCUMENTS ════════════════════════════════════════ */
+    .doc-list { display: flex; flex-direction: column; }
+    .doc-row {
+      display: grid;
+      grid-template-columns: 40px 1fr auto;
+      gap: 20px; align-items: center;
+      padding: 22px 0;
+      border-bottom: 1px solid var(--border);
+      transition: opacity .15s; cursor: pointer;
+    }
+    .doc-row:first-child { border-top: 1px solid var(--border); }
+    .doc-row:hover { opacity: .65; }
+    .doc-icon {
+      width: 36px; height: 44px; border-radius: 5px;
+      background: var(--bg-off);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 3px; flex-shrink: 0;
+    }
+    .doc-icon-lines { display: flex; flex-direction: column; gap: 3px; width: 18px; }
+    .doc-icon-line { height: 2px; border-radius: 1px; background: var(--text-dim); opacity: .4; }
+    .doc-icon-line:first-child { width: 100%; }
+    .doc-icon-line:nth-child(2) { width: 70%; }
+    .doc-icon-line:last-child   { width: 85%; }
+    .doc-body { min-width: 0; }
+    .doc-title {
+      font-size: 17px; font-weight: 600; color: var(--text);
+      letter-spacing: -.02em; line-height: 1.3; margin-bottom: 5px;
+    }
+    .doc-desc {
+      font-size: 14px; line-height: 1.6; color: var(--text-muted);
+      display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .doc-actions { display: flex; align-items: center; flex-shrink: 0; }
+    .doc-arrow {
+      color: var(--text-dim);
+      display: flex; align-items: center;
+      transition: color .15s, transform .15s;
+    }
+    .doc-row:hover .doc-arrow { color: var(--text); transform: translateX(3px); }
+
+    /* ═══ ARTICLES ════════════════════════════════════════ */
+    .article-featured {
+      display: grid; grid-template-columns: 1fr 420px;
+      gap: 0; border-radius: 16px; overflow: hidden;
+      border: 1px solid var(--border); margin-bottom: 32px;
+      cursor: pointer; transition: border-color .2s;
+    }
+    .article-featured:hover { border-color: rgba(0,215,255,.30); }
+    .article-featured-img {
+      background: linear-gradient(135deg, #0d1117, #1a2332);
+      position: relative; overflow: hidden; min-height: 320px;
+    }
+    .article-featured-img::before {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        -45deg, transparent, transparent 28px,
+        rgba(0,215,255,.025) 28px, rgba(0,215,255,.025) 29px
+      );
+    }
+    .article-featured-img::after {
+      content: ''; position: absolute; bottom: -40px; right: -40px;
+      width: 220px; height: 220px;
+      background: radial-gradient(circle, rgba(0,215,255,.15) 0%, transparent 70%);
+    }
+    .article-featured-body {
+      padding: 40px 44px;
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .article-featured-tag {
+      font-family: var(--font-d); font-size: 12px; font-weight: 600;
+      letter-spacing: .08em; text-transform: uppercase; color: var(--accent);
+      background: rgba(0,215,255,.09); border: 1px solid rgba(0,215,255,.22);
+      padding: 3px 10px; border-radius: 20px;
+      display: inline-block; margin-bottom: 20px; align-self: flex-start;
+    }
+    .article-featured-title {
+      font-family: var(--font); font-size: clamp(22px, 2.8vw, 32px);
+      font-weight: 300; line-height: 1.2; letter-spacing: -.025em;
+      color: var(--text); margin-bottom: 16px;
+    }
+    .article-featured-title strong { font-weight: 600; }
+    .article-featured-excerpt {
+      font-size: 16px; line-height: 1.72; color: var(--text-muted);
+      margin-bottom: 28px;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .article-featured-meta {
+      display: flex; align-items: center; gap: 8px;
+      padding-top: 20px; border-top: 1px solid var(--border);
+    }
+    .article-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--bg-dark); display: grid; place-items: center; flex-shrink: 0;
+    }
+    .article-avatar::after {
+      content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+    }
+    .article-by   { font-size: 13px; font-weight: 600; color: var(--text); }
+    .article-date { font-size: 13px; color: var(--text-dim); }
+
+    /* arrows row beneath featured article */
+    .article-carousel-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .article-carousel-label {
+      font-family: var(--font-d); font-size: 13px; font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim);
+    }
+
+    /* Article grid cards */
+    .article-card {
+      border: 1px solid var(--border); border-radius: 14px;
+      overflow: hidden; cursor: pointer;
+      transition: border-color .2s, transform .2s;
+      display: flex; flex-direction: column;
+    }
+    .article-card:hover { border-color: rgba(0,215,255,.28); transform: translateY(-2px); }
+    .article-card-img {
+      height: 160px;
+      background: linear-gradient(135deg, #0d1117, #111820);
+      position: relative; overflow: hidden; flex-shrink: 0;
+    }
+    .article-card-img::after {
+      content: ''; position: absolute; bottom: -20px; right: -20px;
+      width: 120px; height: 120px;
+      background: radial-gradient(circle, rgba(0,215,255,.10) 0%, transparent 70%);
+    }
+    .article-card-img-num {
+      position: absolute; bottom: 14px; left: 16px;
+      font-family: var(--font-d); font-size: 36px; font-weight: 600;
+      letter-spacing: -.05em; color: rgba(0,215,255,.18); line-height: 1;
+    }
+    .article-card-body { padding: 20px 20px 24px; flex: 1; display: flex; flex-direction: column; }
+    .article-card-tag {
+      font-family: var(--font-d); font-size: 11px; font-weight: 600;
+      letter-spacing: .08em; text-transform: uppercase; color: var(--accent);
+      margin-bottom: 10px;
+    }
+    .article-card-title {
+      font-size: 16px; font-weight: 600; line-height: 1.4;
+      letter-spacing: -.01em; color: var(--text);
+      margin-bottom: 10px; flex: 1;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .article-card-meta {
+      display: flex; align-items: center; gap: 6px;
+      margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border);
+    }
+    .article-card-date { font-size: 13px; color: var(--text-dim); margin-left: auto; }
+    .article-card-read { font-size: 13px; color: var(--text-dim); }
+
+    /* ═══ FOOTER ════════════════════════════════════════════ */
+    footer { background: var(--bg-dark); padding: 36px 24px; }
+    .footer-in {
+      max-width: var(--wide); margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .footer-logo {
+      font-family: var(--font-d); font-size: 14px; font-weight: 600;
+      letter-spacing: -.02em; color: rgba(255,255,255,.5);
+      display: flex; align-items: center; gap: 7px;
+    }
+    .footer-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; }
+    .footer-copy { font-size: 14px; color: rgba(255,255,255,.22); }
+
+    /* ═══ Responsive ════════════════════════════════════════ */
+    @media (max-width: 900px) {
+      .carousel-track > * { flex: 0 0 calc((100% - 24px) / 2); }
+      .article-featured { grid-template-columns: 1fr; }
+      .article-featured-img { min-height: 200px; }
+    }
+    @media (max-width: 600px) {
+      .carousel-track > * { flex: 0 0 calc(100% - 40px); }
+      .doc-row      { grid-template-columns: 40px 1fr; }
+      .doc-actions  { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ════ NAV ════════════════════════════════════════════════ -->
+<nav class="nav-top">
+  <div class="nav-in">
+    <div class="nav-logo">
+      <div class="nav-logo-icon"></div>
+      Ground Truth Systems
+    </div>
+    <ul class="nav-links">
+      <li><a href="#">Solution</a></li>
+      <li><a href="#">Research</a></li>
+      <li><a href="#">About</a></li>
+      <li><span class="nav-badge">Insights</span></li>
+    </ul>
+  </div>
+</nav>
+
+
+<!-- ════ HERO — compact, white ═══════════════════════════════ -->
+<section class="hero">
+  <div class="w">
+    <div class="hero-eyebrow">Ground Truth Systems · Resources</div>
+    <h1 class="hero-h1">Clinical AI <strong>Insights</strong></h1>
+    <p class="hero-sub">Research, analysis, and perspectives on building defensible AI in regulated healthcare decision work.</p>
+    <nav class="hero-pills">
+      <a href="#videos" class="hero-pill active">Video</a>
+      <a href="#documents" class="hero-pill">Documents</a>
+      <a href="#articles" class="hero-pill">Articles</a>
+    </nav>
+  </div>
+</section>
+
+
+<!-- ════ VIDEO — carousel ════════════════════════════════════ -->
+<section class="section" id="videos">
+  <div class="w">
+    <div class="section-head">
+      <div>
+        <div class="section-eyebrow">Video</div>
+        <div class="section-title">Talks, demos &amp; <strong>deep dives</strong></div>
+      </div>
+      <div class="arrow-pair">
+        <button class="arrow-btn" id="vid-prev" disabled aria-label="Previous">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M13 4L7 10l6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="arrow-btn" id="vid-next" aria-label="Next">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="carousel-viewport">
+      <div class="carousel-track" id="vid-track">
+
+        <!-- Card 1 -->
+        <div class="video-card">
+          <div class="video-thumb">
+            <div class="video-thumb-bg"></div>
+            <span class="video-tag">Keynote</span>
+            <div class="video-play">
+              <div class="video-play-btn">
+                <svg width="14" height="16" viewBox="0 0 14 16" fill="none">
+                  <path d="M1 1l12 7-12 7V1z" fill="rgba(255,255,255,.9)"/>
+                </svg>
+              </div>
+            </div>
+            <span class="video-duration">24:18</span>
+          </div>
+          <div class="video-meta">
+            <div class="video-avatar"><span class="video-avatar-dot"></span></div>
+            <div class="video-info">
+              <div class="video-title">Is Your UR AI Defensible? Control, Evaluate, Improve in Practice</div>
+              <div class="video-sub">GTS COMAND · May 2025</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="video-card">
+          <div class="video-thumb">
+            <div class="video-thumb-bg"></div>
+            <span class="video-tag">Demo</span>
+            <div class="video-play">
+              <div class="video-play-btn">
+                <svg width="14" height="16" viewBox="0 0 14 16" fill="none">
+                  <path d="M1 1l12 7-12 7V1z" fill="rgba(255,255,255,.9)"/>
+                </svg>
+              </div>
+            </div>
+            <span class="video-duration">12:04</span>
+          </div>
+          <div class="video-meta">
+            <div class="video-avatar"><span class="video-avatar-dot"></span></div>
+            <div class="video-info">
+              <div class="video-title">GTS CORE: The Clinical Ontology and Reasoning Engine Walkthrough</div>
+              <div class="video-sub">GTS COMAND · April 2025</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="video-card">
+          <div class="video-thumb">
+            <div class="video-thumb-bg"></div>
+            <span class="video-tag">Webinar</span>
+            <div class="video-play">
+              <div class="video-play-btn">
+                <svg width="14" height="16" viewBox="0 0 14 16" fill="none">
+                  <path d="M1 1l12 7-12 7V1z" fill="rgba(255,255,255,.9)"/>
+                </svg>
+              </div>
+            </div>
+            <span class="video-duration">38:52</span>
+          </div>
+          <div class="video-meta">
+            <div class="video-avatar"><span class="video-avatar-dot"></span></div>
+            <div class="video-info">
+              <div class="video-title">Deterministic Evaluation in Utilization Review: Why Model-on-Model Scoring Fails</div>
+              <div class="video-sub">GTS COMAND · March 2025</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="video-card">
+          <div class="video-thumb">
+            <div class="video-thumb-bg"></div>
+            <span class="video-tag">Panel</span>
+            <div class="video-play">
+              <div class="video-play-btn">
+                <svg width="14" height="16" viewBox="0 0 14 16" fill="none">
+                  <path d="M1 1l12 7-12 7V1z" fill="rgba(255,255,255,.9)"/>
+                </svg>
+              </div>
+            </div>
+            <span class="video-duration">51:30</span>
+          </div>
+          <div class="video-meta">
+            <div class="video-avatar"><span class="video-avatar-dot"></span></div>
+            <div class="video-info">
+              <div class="video-title">The Approval Gate: Where AI Agent Management Actually Begins</div>
+              <div class="video-sub">GTS COMAND · February 2025</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 5 -->
+        <div class="video-card">
+          <div class="video-thumb">
+            <div class="video-thumb-bg"></div>
+            <span class="video-tag">Deep Dive</span>
+            <div class="video-play">
+              <div class="video-play-btn">
+                <svg width="14" height="16" viewBox="0 0 14 16" fill="none">
+                  <path d="M1 1l12 7-12 7V1z" fill="rgba(255,255,255,.9)"/>
+                </svg>
+              </div>
+            </div>
+            <span class="video-duration">29:07</span>
+          </div>
+          <div class="video-meta">
+            <div class="video-avatar"><span class="video-avatar-dot"></span></div>
+            <div class="video-info">
+              <div class="video-title">Temporal Versioning: Replaying Any Determination on the Rules That Produced It</div>
+              <div class="video-sub">GTS COMAND · January 2025</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ════ DOCUMENTS ═══════════════════════════════════════════ -->
+<section class="section" id="documents">
+  <div class="w">
+    <div class="section-head">
+      <div>
+        <div class="section-eyebrow">Documents</div>
+        <div class="section-title">White papers &amp; <strong>technical specs</strong></div>
+      </div>
+    </div>
+
+    <div class="doc-list">
+
+      <div class="doc-row">
+        <div class="doc-icon pdf">
+          <div class="doc-icon-lines">
+            <div class="doc-icon-line"></div>
+            <div class="doc-icon-line"></div>
+            <div class="doc-icon-line"></div>
+          </div>
+        </div>
+        <div class="doc-body">
+          <div class="doc-title">The Case for Deterministic Evaluation in Clinical AI Governance</div>
+          <div class="doc-desc">Why probabilistic-on-probabilistic evaluation architectures are insufficient for regulated utilization review, and what a defensible alternative looks like.</div>
+        </div>
+        <div class="doc-actions">
+          <a href="#" class="doc-arrow">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M5 9h8M10 6l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="doc-row">
+        <div class="doc-icon spec">
+          <div class="doc-icon-lines">
+            <div class="doc-icon-line"></div>
+            <div class="doc-icon-line"></div>
+            <div class="doc-icon-line"></div>
+          </div>
+        </div>
+        <div class="doc-body">
+          <div class="doc-title">GTS CORE Technical Specification v2.1 — Clinical Ontology and Reasoning Engine</div>
+          <div class="doc-desc">Formal specification of the GTS CORE ontology structure, guideline representation schema, satisfaction logic, and evidence extraction pipeline.</div>
+        </div>
+        <div class="doc-actions">
+          <a href="#" class="doc-arrow">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M5 9h8M10 6l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="doc-row">
+        <div class="doc-icon pdf">
+          <div class="doc-icon-lines">
+            <div class="doc-icon-line"></div>
+            <div class="doc-icon-line"></div>
+            <div class="doc-icon-line"></div>
+          </div>
+        </div>
+        <div class="doc-body">
+          <div class="doc-title">Temporal Versioning in AI-Assisted UR: A Framework for Audit-Ready Decision Trails</div>
+          <div class="doc-desc">How deterministic versioning of guideline representations, model states, and reviewer actions creates a defensible audit record for any prior determination.</div>
+        </div>
+        <div class="doc-actions">
+          <a href="#" class="doc-arrow">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M5 9h8M10 6l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="doc-row">
+        <div class="doc-icon guide">
+          <div class="doc-icon-lines">
+            <div class="doc-icon-line"></div>
+            <div class="doc-icon-line"></div>
+            <div class="doc-icon-line"></div>
+          </div>
+        </div>
+        <div class="doc-body">
+          <div class="doc-title">Procurement Guide: Evaluating AI for Utilization Review — The CEI Checklist</div>
+          <div class="doc-desc">A structured evaluation framework for procurement teams assessing AI vendors in regulated UR environments. Based on the Control, Evaluate, Improve standard.</div>
+        </div>
+        <div class="doc-actions">
+          <a href="#" class="doc-arrow">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M5 9h8M10 6l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ════ ARTICLES ════════════════════════════════════════════ -->
+<section class="section" id="articles">
+  <div class="w">
+    <div class="section-head">
+      <div>
+        <div class="section-eyebrow">Articles</div>
+        <div class="section-title">Analysis &amp; <strong>perspectives</strong></div>
+      </div>
+    </div>
+
+    <!-- Featured -->
+    <div class="article-featured">
+      <div class="article-featured-img"></div>
+      <div class="article-featured-body">
+        <span class="article-featured-tag">UR AI · Procurement</span>
+        <h2 class="article-featured-title">Is Your UR AI <strong>Defensible?</strong> Three Questions to Ask Before You Buy</h2>
+        <p class="article-featured-excerpt">Foundation models will enter utilization review. The question is which architecture you can still operate — and defend — eighteen months from now. Three questions cut through the marketing faster than any feature checklist.</p>
+        <div class="article-featured-meta">
+          <div class="article-avatar"></div>
+          <span class="article-by">Ground Truth Systems</span>
+          <span class="article-date">· May 2025</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrows row above article carousel -->
+    <div class="article-carousel-nav">
+      <span class="article-carousel-label">More articles</span>
+      <div class="arrow-pair">
+        <button class="arrow-btn" id="art-prev" disabled aria-label="Previous">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M13 4L7 10l6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="arrow-btn" id="art-next" aria-label="Next">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Article carousel -->
+    <div class="carousel-viewport">
+      <div class="carousel-track" id="art-track">
+
+        <div class="article-card">
+          <div class="article-card-img">
+            <span class="article-card-img-num">02</span>
+          </div>
+          <div class="article-card-body">
+            <div class="article-card-tag">AI Governance</div>
+            <div class="article-card-title">The Approval Gate Is Where Management of an AI Agent Actually Begins</div>
+            <div class="article-card-meta">
+              <div class="article-avatar" style="width:22px;height:22px"></div>
+              <span style="font-size:12px;font-weight:600;color:var(--text)">GTS</span>
+              <span class="article-card-read">6 min</span>
+              <span class="article-card-date">Apr 2025</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="article-card">
+          <div class="article-card-img">
+            <span class="article-card-img-num">03</span>
+          </div>
+          <div class="article-card-body">
+            <div class="article-card-tag">Compliance</div>
+            <div class="article-card-title">Why "We Use Another Model to Score the First Model" Is Not an Evaluation Strategy</div>
+            <div class="article-card-meta">
+              <div class="article-avatar" style="width:22px;height:22px"></div>
+              <span style="font-size:12px;font-weight:600;color:var(--text)">GTS</span>
+              <span class="article-card-read">5 min</span>
+              <span class="article-card-date">Mar 2025</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="article-card">
+          <div class="article-card-img">
+            <span class="article-card-img-num">04</span>
+          </div>
+          <div class="article-card-body">
+            <div class="article-card-tag">Architecture</div>
+            <div class="article-card-title">Drift vs. Improvement: How Temporal Versioning Separates the Two</div>
+            <div class="article-card-meta">
+              <div class="article-avatar" style="width:22px;height:22px"></div>
+              <span style="font-size:12px;font-weight:600;color:var(--text)">GTS</span>
+              <span class="article-card-read">7 min</span>
+              <span class="article-card-date">Feb 2025</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="article-card">
+          <div class="article-card-img">
+            <span class="article-card-img-num">05</span>
+          </div>
+          <div class="article-card-body">
+            <div class="article-card-tag">Operations</div>
+            <div class="article-card-title">Vigilance Does Not Scale: The Case Against Review-on-Hope Architectures</div>
+            <div class="article-card-meta">
+              <div class="article-avatar" style="width:22px;height:22px"></div>
+              <span style="font-size:12px;font-weight:600;color:var(--text)">GTS</span>
+              <span class="article-card-read">4 min</span>
+              <span class="article-card-date">Jan 2025</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="article-card">
+          <div class="article-card-img">
+            <span class="article-card-img-num">06</span>
+          </div>
+          <div class="article-card-body">
+            <div class="article-card-tag">Procurement</div>
+            <div class="article-card-title">Three Red Flags That Tell You a Vendor Hasn't Solved the Hard Problems</div>
+            <div class="article-card-meta">
+              <div class="article-avatar" style="width:22px;height:22px"></div>
+              <span style="font-size:12px;font-weight:600;color:var(--text)">GTS</span>
+              <span class="article-card-read">5 min</span>
+              <span class="article-card-date">Dec 2024</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ════ FOOTER ══════════════════════════════════════════════ -->
+<footer>
+  <div class="footer-in">
+    <div class="footer-logo"><span class="footer-dot"></span> Ground Truth Systems</div>
+    <div class="footer-copy">© 2025 Ground Truth Systems</div>
+  </div>
+</footer>
+
+<script>
+  function initCarousel(trackId, prevId, nextId) {
+    const track = document.getElementById(trackId);
+    const prev  = document.getElementById(prevId);
+    const next  = document.getElementById(nextId);
+    if (!track || !prev || !next) return;
+
+    const cards = Array.from(track.children);
+    let current = 0;
+
+    function visibleCount() {
+      const vw = track.parentElement.clientWidth;
+      const gap = parseFloat(getComputedStyle(track).gap) || 24;
+      const cardW = cards[0] ? cards[0].getBoundingClientRect().width : vw / 3;
+      return Math.round(vw / (cardW + gap));
+    }
+
+    function stepPx() {
+      const gap = parseFloat(getComputedStyle(track).gap) || 24;
+      const cardW = cards[0] ? cards[0].getBoundingClientRect().width : 0;
+      return cardW + gap;
+    }
+
+    function maxIndex() {
+      return Math.max(0, cards.length - visibleCount());
+    }
+
+    function update() {
+      track.style.transform = `translateX(-${current * stepPx()}px)`;
+      prev.disabled = current <= 0;
+      next.disabled = current >= maxIndex();
+    }
+
+    prev.addEventListener('click', () => { if (current > 0)            { current--; update(); } });
+    next.addEventListener('click', () => { if (current < maxIndex())   { current++; update(); } });
+
+    window.addEventListener('resize', () => {
+      current = Math.min(current, maxIndex());
+      update();
+    });
+
+    update();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    initCarousel('vid-track', 'vid-prev', 'vid-next');
+    initCarousel('art-track', 'art-prev', 'art-next');
+  });
+</script>
+</body>
+</html>
