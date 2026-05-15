@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EUvsDisinfo — Homepage Wireframe</title>
+  <style>
+    /* ── shadcn/ui design tokens ──────────────────────────────── */
+    :root {
+      --background: #ffffff;
+      --foreground: #09090b;
+      --muted: #f4f4f5;
+      --muted-foreground: #71717a;
+      --border: #e4e4e7;
+      --border-strong: #a1a1aa;
+      --ring: #09090b;
+      --radius: 0.5rem;
+      --radius-sm: 0.25rem;
+      --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+    }
+
+    /* ── reset / base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; scroll-behavior: smooth; }
+    body { font-family: var(--font); background: var(--background); color: var(--foreground); line-height: 1.5; }
+    a { color: inherit; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    img { display: block; max-width: 100%; }
+    ul { list-style: none; }
+
+    /* ── annotation system ────────────────────────────────────── */
+    .section-wrap { position: relative; }
+    .section-label {
+      position: absolute; top: 8px; right: 12px; z-index: 10;
+      font-size: 10px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; background: var(--foreground);
+      color: var(--background); padding: 2px 8px;
+      border-radius: var(--radius-sm); pointer-events: none;
+      opacity: .55;
+    }
+
+    /* ── layout helpers ───────────────────────────────────────── */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .flex { display: flex; }
+    .flex-center { display: flex; align-items: center; }
+    .flex-between { display: flex; align-items: center; justify-content: space-between; }
+    .gap-2 { gap: 8px; }
+    .gap-3 { gap: 12px; }
+    .gap-4 { gap: 16px; }
+
+    /* ── typography ───────────────────────────────────────────── */
+    .text-xs   { font-size: 12px; line-height: 1.4; }
+    .text-sm   { font-size: 14px; line-height: 1.5; }
+    .text-base { font-size: 16px; line-height: 1.6; }
+    .text-lg   { font-size: 18px; line-height: 1.5; font-weight: 600; }
+    .text-xl   { font-size: 20px; line-height: 1.4; font-weight: 600; }
+    .text-2xl  { font-size: 24px; line-height: 1.3; font-weight: 700; }
+    .text-3xl  { font-size: 30px; line-height: 1.2; font-weight: 800; }
+    .text-5xl  { font-size: 48px; line-height: 1.1; font-weight: 900; }
+    .text-7xl  { font-size: 72px; line-height: 1.0; font-weight: 900; }
+    .text-muted { color: var(--muted-foreground); }
+    .tracking-tight { letter-spacing: -.02em; }
+    .uppercase { text-transform: uppercase; letter-spacing: .06em; }
+
+    /* ── shadcn components ────────────────────────────────────── */
+
+    /* Badge */
+    .badge {
+      display: inline-flex; align-items: center;
+      border: 1px solid var(--border); border-radius: 9999px;
+      padding: 2px 10px; font-size: 11px; font-weight: 600;
+      letter-spacing: .04em; white-space: nowrap;
+    }
+    .badge-filled {
+      background: var(--foreground); color: var(--background);
+      border-color: var(--foreground);
+    }
+    .badge-outline { background: transparent; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 6px; border-radius: var(--radius); font-size: 14px;
+      font-weight: 600; cursor: pointer; transition: opacity .15s;
+      white-space: nowrap; text-decoration: none !important;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-default {
+      background: var(--foreground); color: var(--background);
+      border: 1px solid var(--foreground); padding: 9px 20px;
+    }
+    .btn-outline {
+      background: var(--background); color: var(--foreground);
+      border: 1px solid var(--foreground); padding: 9px 20px;
+    }
+    .btn-ghost {
+      background: transparent; color: var(--foreground);
+      border: 1px solid transparent; padding: 9px 16px;
+    }
+    .btn-ghost:hover { background: var(--muted); }
+    .btn-sm { padding: 6px 14px; font-size: 13px; }
+    .btn-icon {
+      background: var(--background); border: 1px solid var(--border);
+      border-radius: 9999px; width: 36px; height: 36px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 15px; cursor: pointer;
+    }
+
+    /* Card */
+    .card {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--background); overflow: hidden;
+    }
+    .card:hover { border-color: var(--border-strong); }
+    .card-body { padding: 16px; }
+
+    /* Input */
+    .input {
+      height: 40px; width: 100%;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 0 12px; font-size: 14px; font-family: var(--font);
+      background: var(--background); color: var(--foreground);
+      outline: none;
+    }
+    .input:focus { border-color: var(--foreground); box-shadow: 0 0 0 2px rgba(9,9,11,.12); }
+
+    /* Separator */
+    .separator { border: none; border-top: 1px solid var(--border); }
+
+    /* Image placeholder */
+    .img-placeholder {
+      background: var(--muted); display: flex; align-items: center;
+      justify-content: center; color: var(--muted-foreground);
+      font-size: 11px; font-weight: 600; letter-spacing: .05em;
+      text-transform: uppercase; width: 100%;
+    }
+
+    /* ── 0. ANNOUNCEMENT BANNER ────────────────────────────────── */
+    .top-banner {
+      background: var(--foreground); color: var(--background);
+      font-size: 13px; border-bottom: 1px solid #27272a;
+    }
+    .top-banner .container {
+      display: flex; align-items: center; justify-content: center;
+      gap: 12px; min-height: 40px; flex-wrap: wrap;
+      padding-top: 6px; padding-bottom: 6px;
+    }
+    .top-banner a { color: var(--background); opacity: .9; }
+    .top-banner a:hover { opacity: 1; }
+    .banner-label { font-weight: 700; font-size: 11px; letter-spacing: .08em; opacity: .55; text-transform: uppercase; }
+    .banner-title { flex: 1; max-width: 560px; text-align: center; }
+    .banner-close { opacity: .4; cursor: pointer; font-size: 16px; margin-left: 8px; }
+    .banner-close:hover { opacity: .8; }
+
+    /* ── 1. HEADER ────────────────────────────────────────────── */
+    .site-header {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--background);
+      border-bottom: 1px solid var(--border);
+    }
+    .header-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px; gap: 32px;
+    }
+    .logo {
+      font-size: 17px; font-weight: 900; letter-spacing: -.02em;
+      white-space: nowrap; text-transform: uppercase;
+    }
+    .logo span { font-weight: 400; }
+    .main-nav { display: flex; align-items: center; gap: 4px; }
+    .nav-item {
+      font-size: 14px; font-weight: 500; padding: 6px 10px;
+      border-radius: var(--radius-sm); color: var(--foreground);
+      transition: background .12s; white-space: nowrap;
+    }
+    .nav-item:hover { background: var(--muted); text-decoration: none; }
+    .nav-new { position: relative; }
+    .nav-new::after {
+      content: "NEW"; font-size: 8px; font-weight: 800; letter-spacing: .08em;
+      background: var(--foreground); color: var(--background);
+      padding: 1px 4px; border-radius: 2px;
+      position: absolute; top: 2px; right: 2px;
+    }
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .lang-btn {
+      font-size: 13px; font-weight: 600; padding: 5px 10px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: transparent; cursor: pointer;
+    }
+
+    /* ── 2. HERO ──────────────────────────────────────────────── */
+    .hero-section {
+      padding: 100px 0 88px;
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-inner {
+      display: grid; grid-template-columns: 1fr 460px; gap: 72px;
+      align-items: center;
+    }
+    .hero-badge { margin-bottom: 24px; }
+    .hero-heading {
+      font-size: 64px; font-weight: 900; line-height: 1.05;
+      letter-spacing: -.04em; margin-bottom: 24px;
+    }
+    .hero-sub {
+      font-size: 18px; color: var(--muted-foreground);
+      line-height: 1.65; margin-bottom: 36px; max-width: 500px;
+    }
+    .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 48px; }
+    .hero-stats {
+      display: flex; gap: 40px; padding-top: 36px;
+      border-top: 1px solid var(--border);
+    }
+    .hero-stat-num { font-size: 28px; font-weight: 900; letter-spacing: -.03em; }
+    .hero-stat-label { font-size: 12px; color: var(--muted-foreground); margin-top: 3px; }
+    .hero-visual {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--muted); aspect-ratio: 4/3;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; color: var(--muted-foreground);
+    }
+    .hero-visual-icon { font-size: 48px; opacity: .25; }
+    .hero-visual-label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; opacity: .4; }
+
+    /* ── 3. LATEST ARTICLES ───────────────────────────────────── */
+    .articles-section { padding: 88px 0; }
+    .section-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 36px; }
+    .section-title { font-size: 32px; font-weight: 800; letter-spacing: -.025em; }
+    .section-link { font-size: 14px; font-weight: 600; color: var(--muted-foreground); }
+    .section-link:hover { color: var(--foreground); }
+
+    /* Featured top article — full-width horizontal */
+    .article-featured {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; margin-bottom: 24px; cursor: pointer;
+    }
+    .article-featured:hover { border-color: var(--border-strong); }
+    .article-featured .article-thumb {
+      aspect-ratio: 16/9; height: auto; border-radius: 0; border: none;
+    }
+    .article-featured .article-body {
+      border: none; border-left: 1px solid var(--border);
+      border-radius: 0; padding: 32px; gap: 16px; justify-content: center;
+    }
+    .article-featured .article-title { font-size: 22px; line-height: 1.3; font-weight: 800; }
+    .article-featured .article-excerpt { font-size: 15px; line-height: 1.6; }
+
+    /* Card grid — remaining 4 articles */
+    .article-card { display: flex; flex-direction: column; }
+    .article-thumb {
+      background: var(--muted); border-radius: var(--radius) var(--radius) 0 0;
+      aspect-ratio: 16/9; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border); border-bottom: none;
+    }
+    .article-thumb .img-placeholder { width: 100%; height: 100%; }
+    .article-body {
+      border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius);
+      padding: 20px 24px; flex: 1; display: flex; flex-direction: column; gap: 12px;
+    }
+    .article-meta { display: flex; align-items: center; gap: 8px; }
+    .article-cat {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; background: var(--foreground); color: var(--background);
+      padding: 2px 7px; border-radius: var(--radius-sm);
+    }
+    .article-date { font-size: 12px; color: var(--muted-foreground); }
+    .article-title { font-size: 16px; font-weight: 700; line-height: 1.4; }
+    .article-title a:hover { text-decoration: underline; }
+    .article-excerpt { font-size: 14px; color: var(--muted-foreground); line-height: 1.55; flex: 1; }
+    .article-audio {
+      font-size: 12px; color: var(--muted-foreground); display: flex;
+      align-items: center; gap: 5px; cursor: pointer; width: fit-content;
+    }
+    .article-audio:hover { color: var(--foreground); }
+
+    .articles-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+
+    /* ── 4. DATABASE COUNTER ──────────────────────────────────── */
+    .db-counter {
+      background: var(--foreground); color: var(--background);
+      padding: 96px 0;
+    }
+    .db-counter a { color: var(--background); text-decoration: none !important; }
+    .db-inner {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 80px;
+      align-items: center;
+    }
+    .db-left { display: flex; flex-direction: column; gap: 0; }
+    .db-num {
+      font-size: 100px; font-weight: 900; letter-spacing: -.05em;
+      line-height: .95; font-variant-numeric: tabular-nums;
+      display: block; margin-bottom: 16px;
+    }
+    .db-label {
+      font-size: 20px; opacity: .6; line-height: 1.4;
+      margin-bottom: 36px; max-width: 320px;
+    }
+    .db-ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+    .db-right {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 32px;
+      border-left: 1px solid rgba(255,255,255,.12); padding-left: 80px;
+    }
+    .db-stat { display: flex; flex-direction: column; gap: 6px; }
+    .db-stat-num { font-size: 36px; font-weight: 900; letter-spacing: -.03em; line-height: 1; }
+    .db-stat-label { font-size: 13px; opacity: .55; line-height: 1.4; }
+
+    /* ── 5. FIMI EXPLORER ─────────────────────────────────────── */
+    .fimi-section { padding: 88px 0; border-bottom: 1px solid var(--border); }
+    .fimi-inner {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 64px;
+      align-items: center;
+    }
+    .fimi-visual {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--muted); aspect-ratio: 4/3;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 10px; color: var(--muted-foreground);
+      cursor: pointer; transition: border-color .15s;
+    }
+    .fimi-visual:hover { border-color: var(--foreground); }
+    .fimi-visual-icon { font-size: 56px; opacity: .2; }
+    .fimi-visual-label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; opacity: .45; }
+    .fimi-text { display: flex; flex-direction: column; gap: 20px; }
+    .fimi-title { font-size: 40px; font-weight: 900; letter-spacing: -.03em; line-height: 1.1; }
+    .fimi-desc { font-size: 16px; color: var(--muted-foreground); line-height: 1.65; }
+
+    /* ── 6. REPORTS — horizontal slider ──────────────────────── */
+    .reports-section { padding: 80px 0; border-bottom: 1px solid var(--border); background: var(--muted); }
+    .h-slider {
+      overflow-x: auto; padding-bottom: 16px;
+      -webkit-overflow-scrolling: touch; cursor: grab;
+    }
+    .h-slider:active { cursor: grabbing; }
+    .h-slider::-webkit-scrollbar { height: 4px; }
+    .h-slider::-webkit-scrollbar-track { background: var(--border); border-radius: 2px; }
+    .h-slider::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+    .h-slider-track { display: flex; gap: 16px; padding: 4px 2px; }
+    .h-slider-track .report-card { flex-shrink: 0; width: 280px; }
+    .h-slider-track .video-card  { flex-shrink: 0; width: 300px; }
+    .report-card { cursor: pointer; text-decoration: none !important; }
+    .report-thumb {
+      background: var(--background); border: 1px solid var(--border);
+      border-radius: var(--radius) var(--radius) 0 0;
+      aspect-ratio: 4/3;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted-foreground); font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .report-body {
+      border: 1px solid var(--border); border-top: none;
+      border-radius: 0 0 var(--radius) var(--radius);
+      padding: 16px; background: var(--background);
+    }
+    .report-title { font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--foreground); }
+    .report-year { font-size: 12px; color: var(--muted-foreground); margin-top: 6px; }
+
+    /* ── 8. SUBSCRIBE ─────────────────────────────────────────── */
+    .subscribe-section {
+      padding: 96px 0; background: var(--muted);
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    }
+    .subscribe-inner { max-width: 600px; margin: 0 auto; text-align: center; }
+    .subscribe-title { font-size: 40px; font-weight: 900; letter-spacing: -.03em; margin-bottom: 12px; line-height: 1.1; }
+    .subscribe-sub { font-size: 17px; color: var(--muted-foreground); margin-bottom: 36px; }
+    .subscribe-form { display: flex; gap: 10px; }
+    .subscribe-form .input { height: 48px; font-size: 15px; }
+    .subscribe-form .btn { height: 48px; padding: 0 24px; font-size: 15px; }
+    .subscribe-note { font-size: 12px; color: var(--muted-foreground); margin-top: 16px; }
+
+    /* ── 9. VIDEOS — featured + slider ───────────────────────── */
+    .videos-section { padding: 80px 0; border-bottom: 1px solid var(--border); }
+    .video-featured {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; margin-bottom: 32px;
+      text-decoration: none !important; color: inherit;
+    }
+    .video-featured:hover { border-color: var(--border-strong); }
+    .video-featured .video-thumb { aspect-ratio: 16/9; height: auto; border-radius: 0; border: none; }
+    .video-featured .video-play { width: 56px; height: 56px; font-size: 20px; }
+    .video-featured-body {
+      border-left: 1px solid var(--border); padding: 32px;
+      display: flex; flex-direction: column; gap: 16px; justify-content: center;
+    }
+    .video-featured-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted-foreground); }
+    .video-featured-title { font-size: 22px; font-weight: 800; line-height: 1.3; }
+    .video-featured-desc { font-size: 15px; line-height: 1.6; color: var(--muted-foreground); }
+    .videos-more-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-foreground); margin-bottom: 16px; }
+    .video-card { cursor: pointer; text-decoration: none !important; }
+    .video-thumb {
+      background: var(--muted); border: 1px solid var(--border);
+      border-radius: var(--radius) var(--radius) 0 0;
+      aspect-ratio: 16/9;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted-foreground); position: relative;
+    }
+    .video-play {
+      width: 48px; height: 48px; border-radius: 9999px;
+      background: var(--foreground); color: var(--background);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; padding-left: 4px;
+    }
+    .video-body {
+      border: 1px solid var(--border); border-top: none;
+      border-radius: 0 0 var(--radius) var(--radius);
+      padding: 14px 16px; background: var(--background);
+    }
+    .video-title { font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--foreground); }
+
+    /* ── 10. SOCIAL ───────────────────────────────────────────── */
+    .social-section { padding: 88px 0; border-bottom: 1px solid var(--border); }
+    .social-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
+    .social-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted-foreground); margin-bottom: 16px; }
+    .social-heading { font-size: clamp(2rem, 3.5vw, 2.75rem); font-weight: 700; line-height: 1.15; letter-spacing: -.02em; margin-bottom: 20px; }
+    .social-copy { font-size: 16px; line-height: 1.65; color: var(--muted-foreground); margin-bottom: 32px; }
+    .social-benefits { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+    .social-benefit { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; font-weight: 500; line-height: 1.4; }
+    .social-benefit-check {
+      font-size: 11px; font-weight: 700; background: var(--foreground); color: var(--background);
+      width: 20px; height: 20px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+    }
+    .social-platforms { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .platform-card {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px; display: flex; flex-direction: column; gap: 8px;
+      text-decoration: none !important; color: var(--foreground);
+      transition: border-color .12s, background .12s;
+    }
+    .platform-card:hover { border-color: var(--foreground); background: var(--muted); }
+    .platform-card-header { display: flex; align-items: center; gap: 8px; }
+    .platform-icon {
+      width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 6px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; flex-shrink: 0;
+    }
+    .platform-name { font-size: 14px; font-weight: 700; }
+    .platform-desc { font-size: 12px; line-height: 1.45; color: var(--muted-foreground); flex: 1; }
+    .platform-follow { font-size: 12px; font-weight: 600; }
+
+    /* ── 11. CHATBOT FAB ──────────────────────────────────────── */
+    .chatbot-fab {
+      position: fixed; bottom: 28px; right: 28px; z-index: 100;
+      width: 56px; height: 56px; border-radius: 9999px;
+      background: var(--foreground); color: var(--background);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,.18);
+      border: 2px solid var(--foreground); transition: transform .15s;
+    }
+    .chatbot-fab:hover { transform: scale(1.08); }
+    .chatbot-tooltip {
+      position: fixed; bottom: 92px; right: 28px; z-index: 100;
+      background: var(--foreground); color: var(--background);
+      font-size: 12px; font-weight: 600; padding: 6px 12px;
+      border-radius: var(--radius-sm); white-space: nowrap;
+      opacity: 0; pointer-events: none; transition: opacity .15s;
+    }
+    .chatbot-fab:hover + .chatbot-tooltip { opacity: 1; }
+
+    /* ── 12. FOOTER ───────────────────────────────────────────── */
+    .site-footer {
+      background: var(--foreground); color: var(--background);
+      padding: 56px 0 28px;
+    }
+    .footer-top { display: grid; grid-template-columns: 280px 1fr 1fr 1fr; gap: 48px; margin-bottom: 40px; }
+    .footer-logo { font-size: 16px; font-weight: 900; letter-spacing: -.02em; text-transform: uppercase; margin-bottom: 8px; }
+    .footer-tagline { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; opacity: .4; margin-bottom: 20px; }
+    .footer-contact { font-size: 13px; opacity: .65; line-height: 1.6; }
+    .footer-contact a { color: var(--background); opacity: 1; }
+    .footer-contact a:hover { opacity: .7; }
+    .footer-social { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    .footer-social-icon {
+      width: 32px; height: 32px; border: 1px solid rgba(255,255,255,.2);
+      border-radius: var(--radius-sm); display: flex; align-items: center;
+      justify-content: center; font-size: 14px; cursor: pointer;
+      transition: border-color .12s;
+    }
+    .footer-social-icon:hover { border-color: rgba(255,255,255,.6); }
+    .footer-col-title { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; opacity: .4; margin-bottom: 14px; }
+    .footer-nav { display: flex; flex-direction: column; gap: 8px; }
+    .footer-nav a { font-size: 13px; color: var(--background); opacity: .7; }
+    .footer-nav a:hover { opacity: 1; text-decoration: none; }
+    .footer-langs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .footer-lang {
+      font-size: 12px; font-weight: 600; padding: 3px 8px;
+      border: 1px solid rgba(255,255,255,.2); border-radius: var(--radius-sm);
+      cursor: pointer; transition: border-color .12s; text-decoration: none !important;
+      color: var(--background); opacity: .7;
+    }
+    .footer-lang:hover { border-color: rgba(255,255,255,.6); opacity: 1; }
+    .footer-bottom {
+      border-top: 1px solid rgba(255,255,255,.1);
+      padding-top: 20px;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    }
+    .footer-legal { display: flex; gap: 20px; }
+    .footer-legal a { font-size: 12px; color: var(--background); opacity: .4; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+    .footer-legal a:hover { opacity: .8; }
+    .footer-credit { font-size: 11px; opacity: .3; }
+
+    /* ── wireframe legend ─────────────────────────────────────── */
+    .wf-legend {
+      background: #fafafa; border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px 24px;
+      margin: 0 auto 0; max-width: 1200px;
+      display: flex; gap: 24px; flex-wrap: wrap; align-items: center;
+    }
+    .wf-legend-title { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted-foreground); }
+    .wf-legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-foreground); }
+    .legend-box { width: 24px; height: 14px; border-radius: 2px; flex-shrink: 0; }
+    .lb-img { background: var(--muted); border: 1px dashed var(--border-strong); }
+    .lb-new { background: var(--foreground); }
+    .lb-link { border: 1px solid var(--border-strong); background: var(--background); }
+
+    /* ── section dividers ─────────────────────────────────────── */
+    .section-divider {
+      text-align: center; padding: 8px 0; font-size: 10px;
+      font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+      color: var(--muted-foreground); position: relative;
+    }
+    .section-divider::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 50%;
+      border-top: 1px dashed var(--border);
+    }
+    .section-divider span {
+      background: var(--background); position: relative; padding: 0 12px;
+    }
+
+    @media (max-width: 1024px) {
+      .hero-heading { font-size: 48px; }
+      .db-inner { grid-template-columns: 1fr; gap: 48px; }
+      .db-right { border-left: none; border-top: 1px solid rgba(255,255,255,.12); padding-left: 0; padding-top: 40px; }
+      .articles-grid { grid-template-columns: repeat(2, 1fr); }
+      .article-featured { grid-template-columns: 1fr; }
+      .article-featured .article-body { border-left: none; border-top: 1px solid var(--border); }
+      .video-featured { grid-template-columns: 1fr; }
+      .video-featured-body { border-left: none; border-top: 1px solid var(--border); }
+      .social-inner { grid-template-columns: 1fr; gap: 48px; }
+    }
+    @media (max-width: 768px) {
+      .hero-inner { grid-template-columns: 1fr; }
+      .hero-visual { display: none; }
+      .hero-heading { font-size: 38px; }
+      .fimi-inner { grid-template-columns: 1fr; }
+      .footer-top { grid-template-columns: 1fr 1fr; }
+      .articles-grid { grid-template-columns: 1fr; }
+      .section-title { font-size: 26px; }
+      .social-platforms { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── LEGEND ──────────────────────────────────────────────────────── -->
+<div style="background:#f9f9f9; border-bottom:1px solid var(--border); padding:10px 24px;">
+  <div class="wf-legend" style="margin:0; padding:12px 0; border:none; background:transparent;">
+    <span class="wf-legend-title">Wireframe Legend</span>
+    <span class="wf-legend-item"><span class="legend-box lb-img"></span> Image placeholder</span>
+    <span class="wf-legend-item"><span class="legend-box lb-new"></span> New block (vs current site)</span>
+    <span class="wf-legend-item"><span class="legend-box lb-link"></span> All links are real URLs</span>
+    <span class="wf-legend-item" style="color:#a1a1aa;">Based on: euvsdisinfo.eu · shadcn/ui B&amp;W · May 2026</span>
+  </div>
+</div>
+
+<!-- ── 0. ANNOUNCEMENT BANNER ──────────────────────────────────────── -->
+<div class="section-wrap top-banner">
+  <span class="section-label">0 · Announcement Banner · NEW</span>
+  <div class="container">
+    <span class="banner-label">Disinfo Review</span>
+    <span class="banner-title">
+      <a href="https://euvsdisinfo.eu/victory-day-propaganda-masking-fear-with-intimidation-and-abduction-denial/">
+        Victory Day propaganda, masking fear with intimidation, and abduction denial
+      </a>
+    </span>
+    <a href="https://euvsdisinfo.eu/victory-day-propaganda-masking-fear-with-intimidation-and-abduction-denial/" class="btn btn-outline btn-sm" style="border-color:rgba(255,255,255,.3);color:#fff;background:transparent;">Read now →</a>
+    <span class="banner-close">✕</span>
+  </div>
+</div>
+
+<!-- ── 1. HEADER ────────────────────────────────────────────────────── -->
+<header class="site-header section-wrap">
+  <span class="section-label">1 · Header</span>
+  <div class="container">
+    <div class="header-inner">
+      <a href="https://euvsdisinfo.eu/" class="logo">EUvs<span>Disinfo</span></a>
+      <nav class="main-nav">
+        <a href="https://euvsdisinfo.eu/articles/" class="nav-item">Articles</a>
+        <a href="https://euvsdisinfo.eu/disinformation-cases/" class="nav-item">Database</a>
+        <a href="https://euvsdisinfo.eu/learn/" class="nav-item">Learn</a>
+        <a href="https://euvsdisinfo.eu/fimi-explorer/" class="nav-item nav-new">FIMI Explorer</a>
+        <a href="https://euvsdisinfo.eu/research/" class="nav-item">Research</a>
+        <a href="https://euvsdisinfo.eu/videos/" class="nav-item">Videos</a>
+        <a href="https://euvsdisinfo.eu/about/" class="nav-item">About</a>
+      </nav>
+      <div class="header-actions">
+        <a href="https://euvsdisinfo.eu/#subscription" class="btn btn-default btn-sm">Subscribe</a>
+        <button class="lang-btn">EN ▾</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ── 2. HERO ──────────────────────────────────────────────────────── -->
+<section class="hero-section section-wrap" style="border-bottom:1px solid var(--border);">
+  <span class="section-label">2 · Hero — Intro / Hook · UPDATED</span>
+  <div class="container">
+    <div class="hero-inner">
+      <div>
+        <div class="hero-badge">
+          <span class="badge badge-outline">EEAS · East StratCom Task Force · Est. 2015</span>
+        </div>
+        <h1 class="hero-heading tracking-tight">
+          Detecting, analysing, and raising awareness about disinformation.
+        </h1>
+        <p class="hero-sub">
+          EUvsDisinfo is the EU flagship project tracking Foreign Information Manipulation
+          and Interference (FIMI). Since 2015, we identify and expose pro-Kremlin
+          disinformation campaigns in its different shapes and forms.
+        </p>
+        <div class="hero-ctas">
+          <a href="https://euvsdisinfo.eu/fimi-explorer/" class="btn btn-default">Explore FIMI Explorer ↗</a>
+          <a href="https://euvsdisinfo.eu/disinformation-cases/" class="btn btn-outline">Browse Database</a>
+        </div>
+        <div class="hero-stats">
+          <div>
+            <div class="hero-stat-num">19,693</div>
+            <div class="hero-stat-label">cases debunked</div>
+          </div>
+          <div>
+            <div class="hero-stat-num">17</div>
+            <div class="hero-stat-label">site languages</div>
+          </div>
+          <div>
+            <div class="hero-stat-num">2015</div>
+            <div class="hero-stat-label">established</div>
+          </div>
+          <div>
+            <div class="hero-stat-num">EEAS</div>
+            <div class="hero-stat-label">EU institution</div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="hero-visual-icon">🌐</div>
+        <div class="hero-visual-label">Key visual / abstract graphic</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 3. LATEST ARTICLES ────────────────────────────────────────────── -->
+<section class="articles-section section-wrap">
+  <span class="section-label">3 · Latest Articles</span>
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">Latest Articles</h2>
+      <a href="https://euvsdisinfo.eu/articles/" class="section-link">View all articles →</a>
+    </div>
+    <!-- Featured article — horizontal, 16:9 left + text right -->
+    <a href="https://euvsdisinfo.eu/victory-day-propaganda-masking-fear-with-intimidation-and-abduction-denial/" class="article-featured" style="text-decoration:none;color:inherit;">
+      <div class="article-thumb">
+        <div class="img-placeholder" style="width:100%;height:100%;">Image 16:9</div>
+      </div>
+      <div class="article-body">
+        <div class="article-meta">
+          <span class="article-cat">Disinformation Review</span>
+          <span class="article-date">May 15, 2026</span>
+        </div>
+        <h3 class="article-title">
+          Victory Day propaganda, masking fear with intimidation, and abduction denial
+        </h3>
+        <p class="article-excerpt">The Kremlin recycles 'Nazi Ukraine' myths amid Victory Day celebrations, blending fear tactics with historical revisionism to shape domestic and international perception of the war.</p>
+        <span class="article-audio">▷ Listen · 4 min</span>
+      </div>
+    </a>
+
+    <!-- 4-card grid -->
+    <div class="articles-grid">
+
+      <!-- Article 2 -->
+      <div class="article-card">
+        <div class="article-thumb">
+          <div class="img-placeholder" style="width:100%;height:100%;">16:9</div>
+        </div>
+        <div class="article-body">
+          <div class="article-meta">
+            <span class="article-cat">News and Analysis</span>
+            <span class="article-date">May 12, 2026</span>
+          </div>
+          <h3 class="article-title">
+            <a href="https://euvsdisinfo.eu/from-preschool-to-adolescence-expanding-ideological-control-in-russian-schools/">
+              From preschool to adolescence: expanding ideological control in Russian schools
+            </a>
+          </h3>
+          <p class="article-excerpt">The Kremlin's FIMI campaigns are turning inward, making 'true patriots' out of three-year-olds.</p>
+          <span class="article-audio">▷ Listen</span>
+        </div>
+      </div>
+
+      <!-- Article 3 -->
+      <div class="article-card">
+        <div class="article-thumb">
+          <div class="img-placeholder" style="width:100%;height:100%;">16:9</div>
+        </div>
+        <div class="article-body">
+          <div class="article-meta">
+            <span class="article-cat" style="background:var(--muted);color:var(--foreground);border:1px solid var(--border);">Guest Content</span>
+            <span class="article-date">May 11, 2026</span>
+          </div>
+          <h3 class="article-title">
+            <a href="https://euvsdisinfo.eu/how-russia-lies-about-the-stolen-ukrainian-children/">
+              How Russia lies about the stolen Ukrainian children
+            </a>
+          </h3>
+          <p class="article-excerpt">How the Kremlin uses disinformation to justify the unlawful deportation of Ukrainian children.</p>
+          <span class="article-audio">▷ Listen</span>
+        </div>
+      </div>
+
+      <!-- Article 4 -->
+      <div class="article-card">
+        <div class="article-thumb">
+          <div class="img-placeholder" style="width:100%;height:100%;">16:9</div>
+        </div>
+        <div class="article-body">
+          <div class="article-meta">
+            <span class="article-cat">News and Analysis</span>
+            <span class="article-date">May 09, 2026</span>
+          </div>
+          <h3 class="article-title">
+            <a href="https://euvsdisinfo.eu/the-parade-that-shrank-russias-victory-day-under-pressure/">
+              The parade that shrank: Russia's Victory Day under pressure
+            </a>
+          </h3>
+          <p class="article-excerpt">No tanks, fewer foreign guests, and a Kremlin spectacle shaped by the war it claims is going to plan.</p>
+          <span class="article-audio">▷ Listen</span>
+        </div>
+      </div>
+
+      <!-- Article 5 -->
+      <div class="article-card">
+        <div class="article-thumb">
+          <div class="img-placeholder" style="width:100%;height:100%;">16:9</div>
+        </div>
+        <div class="article-body">
+          <div class="article-meta">
+            <span class="article-cat">Disinformation Review</span>
+            <span class="article-date">May 08, 2026</span>
+          </div>
+          <h3 class="article-title">
+            <a href="https://euvsdisinfo.eu/fake-european-crises-and-real-russian-failures/">
+              Fake European crises and real Russian failures
+            </a>
+          </h3>
+          <p class="article-excerpt">Pro-Kremlin outlets target Europe as Moscow's own symbols of strength come under pressure.</p>
+          <span class="article-audio">▷ Listen</span>
+        </div>
+      </div>
+
+    </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── 4. DATABASE COUNTER ──────────────────────────────────────────── -->
+<section class="db-counter section-wrap">
+  <span class="section-label" style="color:var(--foreground);background:rgba(255,255,255,.15);">4 · Database Counter · UPDATED</span>
+  <div class="container">
+    <div class="db-inner">
+
+      <!-- Left: number + CTA -->
+      <div class="db-left">
+        <a href="https://euvsdisinfo.eu/disinformation-cases/">
+          <span class="db-num">19,693</span>
+        </a>
+        <p class="db-label">disinformation cases<br>collected and debunked</p>
+        <div class="db-ctas">
+          <a href="https://euvsdisinfo.eu/disinformation-cases/" class="btn btn-default" style="background:#fff;color:var(--foreground);border-color:#fff;">
+            Search the Database →
+          </a>
+          <a href="https://euvsdisinfo.eu/disinformation-cases/" class="btn btn-ghost" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);">
+            Browse all cases
+          </a>
+        </div>
+      </div>
+
+      <!-- Right: secondary stats -->
+      <div class="db-right">
+        <div class="db-stat">
+          <span class="db-stat-num">Weekly</span>
+          <span class="db-stat-label">database updated every week with new debunked cases</span>
+        </div>
+        <div class="db-stat">
+          <span class="db-stat-num">15+</span>
+          <span class="db-stat-label">languages monitored for disinformation content</span>
+        </div>
+        <div class="db-stat">
+          <span class="db-stat-num">2015</span>
+          <span class="db-stat-label">year the database was established by EEAS</span>
+        </div>
+        <div class="db-stat">
+          <span class="db-stat-num">Open</span>
+          <span class="db-stat-label">source — free access for researchers and journalists</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── 5. FIMI EXPLORER ─────────────────────────────────────────────── -->
+<section class="fimi-section section-wrap">
+  <span class="section-label">5 · FIMI Explorer Promo · NEW</span>
+  <div class="container">
+    <div class="fimi-inner">
+      <a href="https://euvsdisinfo.eu/fimi-explorer/" class="fimi-visual" style="text-decoration:none;">
+        <div class="fimi-visual-icon">🔭</div>
+        <div class="fimi-visual-label">Galaxy visualization preview</div>
+        <div style="font-size:11px;color:var(--muted-foreground);opacity:.4;margin-top:4px;">hover to animate</div>
+      </a>
+      <div class="fimi-text">
+        <div>
+          <span class="badge badge-filled" style="margin-bottom:14px;">Interactive Tool</span>
+        </div>
+        <h2 class="fimi-title">FIMI Galaxy Explorer</h2>
+        <p class="fimi-desc">
+          The first public interactive dashboard on Foreign Information Manipulation and
+          Interference (FIMI) activities. Explore campaigns, actors, and patterns across
+          time and geography.
+        </p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <a href="https://euvsdisinfo.eu/fimi-explorer/" class="btn btn-default">Open Explorer ↗</a>
+          <a href="https://euvsdisinfo.eu/research/" class="btn btn-ghost">Read FIMI Reports</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 6. REPORTS ───────────────────────────────────────────────────── -->
+<section class="reports-section section-wrap">
+  <span class="section-label">6 · EEAS FIMI Reports</span>
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">EEAS FIMI Threat Reports</h2>
+      <a href="https://euvsdisinfo.eu/research/" class="section-link">All Research →</a>
+    </div>
+    <div class="h-slider">
+      <div class="h-slider-track">
+
+        <a href="https://euvsdisinfo.eu/eeas-4th-fimi-threat-report-march-2026/" class="report-card">
+          <div class="report-thumb">Report Cover · 4:3</div>
+          <div class="report-body">
+            <div class="report-title">4th EEAS Report on Foreign Information Manipulation and Interference Threats</div>
+            <div class="report-year">March 2026</div>
+          </div>
+        </a>
+
+        <a href="https://euvsdisinfo.eu/eeas-3rd-fimi-threat-report-march-2025/" class="report-card">
+          <div class="report-thumb">Report Cover · 4:3</div>
+          <div class="report-body">
+            <div class="report-title">3rd EEAS Report on Foreign Information Manipulation and Interference Threats</div>
+            <div class="report-year">March 2025</div>
+          </div>
+        </a>
+
+        <a href="https://euvsdisinfo.eu/eeas-2nd-fimi-threat-report-january-2024/" class="report-card">
+          <div class="report-thumb">Report Cover · 4:3</div>
+          <div class="report-body">
+            <div class="report-title">2nd EEAS Report on Foreign Information Manipulation and Interference Threats</div>
+            <div class="report-year">January 2024</div>
+          </div>
+        </a>
+
+        <a href="https://euvsdisinfo.eu/eeas-1st-fimi-threat-report-february-2023/" class="report-card">
+          <div class="report-thumb">Report Cover · 4:3</div>
+          <div class="report-body">
+            <div class="report-title">1st EEAS Report on Foreign Information Manipulation and Interference Threats</div>
+            <div class="report-year">February 2023</div>
+          </div>
+        </a>
+
+        <!-- hint card -->
+        <div class="report-card" style="border:1px dashed var(--border-strong);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;min-height:180px;background:transparent;">
+          <a href="https://euvsdisinfo.eu/research/" style="font-size:13px;font-weight:700;color:var(--muted-foreground);text-align:center;padding:24px;">All Research →</a>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 8. SUBSCRIBE ─────────────────────────────────────────────────── -->
+<section class="subscribe-section section-wrap">
+  <span class="section-label">7 · Subscribe · UPDATED (no popup)</span>
+  <div class="container">
+    <div class="subscribe-inner">
+      <h2 class="subscribe-title">Subscribe to the Disinfo Review</h2>
+      <p class="subscribe-sub">Your weekly update on pro-Kremlin disinformation</p>
+      <form class="subscribe-form" onsubmit="return false;">
+        <input class="input" type="email" placeholder="your@email.com" />
+        <button class="btn btn-default" type="submit">Subscribe →</button>
+      </form>
+      <p class="subscribe-note">
+        No spam. Unsubscribe at any time.
+        Sent via Mailchimp — see <a href="https://mailchimp.com/legal/privacy/" style="text-decoration:underline;">privacy policy</a>.
+        <a href="https://euvsdisinfo.eu/eeas-privacy-statement-data-protection-notice/" style="text-decoration:underline;">EEAS data protection</a>.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ── 9. VIDEOS ────────────────────────────────────────────────────── -->
+<section class="videos-section section-wrap">
+  <span class="section-label">8 · Videos</span>
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">Videos</h2>
+      <a href="https://www.youtube.com/channel/UCAiQd5dj168VcYa6Nly_jIw/featured" class="section-link" target="_blank">YouTube channel →</a>
+    </div>
+
+    <!-- Featured video -->
+    <a href="https://youtu.be/W3PfDkdd-7s?list=PLnmEC32kUR72RzO9NaCXZqrMHgY7WCAYd" class="video-featured" target="_blank">
+      <div class="video-thumb">
+        <div class="video-play">▶</div>
+      </div>
+      <div class="video-featured-body">
+        <div class="video-featured-eyebrow">Latest · May 11, 2025</div>
+        <div class="video-featured-title">Last Week – Special May 9 Edition – Apr 28 – May 11</div>
+        <div class="video-featured-desc">How the Kremlin's "Victory Day" narrative reframes Russia's war in Ukraine as a historic triumph — the new disinformation signals to watch this week.</div>
+        <div><span class="btn btn-default" style="display:inline-block;">Watch now →</span></div>
+      </div>
+    </a>
+
+    <!-- More videos slider -->
+    <div class="videos-more-label">More videos</div>
+    <div class="h-slider">
+      <div class="h-slider-track">
+
+        <a href="https://youtu.be/wo9ww3Q-6O8?list=PLnmEC32kUR72RzO9NaCXZqrMHgY7WCAYd" class="video-card" target="_blank">
+          <div class="video-thumb"><div class="video-play">▶</div></div>
+          <div class="video-body"><div class="video-title">Last Week on EUvsDisinfo – March 24 – 30, 2025</div></div>
+        </a>
+
+        <a href="https://youtu.be/sooEV-qjtLA?list=PLnmEC32kUR72RzO9NaCXZqrMHgY7WCAYd" class="video-card" target="_blank">
+          <div class="video-thumb"><div class="video-play">▶</div></div>
+          <div class="video-body"><div class="video-title">Last Week on EUvsDisinfo – March 31 – April 6, 2025</div></div>
+        </a>
+
+        <a href="https://youtu.be/kEhO2KvPxdU?list=PLnmEC32kUR72RzO9NaCXZqrMHgY7WCAYd" class="video-card" target="_blank">
+          <div class="video-thumb"><div class="video-play">▶</div></div>
+          <div class="video-body"><div class="video-title">Last Week on EUvsDisinfo – April 7 – 13, 2025</div></div>
+        </a>
+
+        <a href="https://youtu.be/aJvSU0YNMsY?list=PLnmEC32kUR72RzO9NaCXZqrMHgY7WCAYd" class="video-card" target="_blank">
+          <div class="video-thumb"><div class="video-play">▶</div></div>
+          <div class="video-body"><div class="video-title">Last Week on EUvsDisinfo – April 13 – 20, 2025</div></div>
+        </a>
+
+        <a href="https://youtu.be/Ytxh20G2AnE?list=PLnmEC32kUR72RzO9NaCXZqrMHgY7WCAYd" class="video-card" target="_blank">
+          <div class="video-thumb"><div class="video-play">▶</div></div>
+          <div class="video-body"><div class="video-title">Last Week on EUvsDisinfo – April 21 – 27, 2025</div></div>
+        </a>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 10. SOCIAL ────────────────────────────────────────────────────── -->
+<section class="social-section section-wrap">
+  <span class="section-label">9 · Follow</span>
+  <div class="container">
+    <div class="social-inner">
+
+      <!-- Left: CTA copy -->
+      <div class="social-left">
+        <div class="social-eyebrow">Stay connected</div>
+        <h2 class="social-heading">Don't miss<br>what's next</h2>
+        <p class="social-copy">Disinformation moves fast. Our channels keep you one step ahead — with real-time alerts, expert analysis, and exclusive insights updated every day.</p>
+        <ul class="social-benefits">
+          <li class="social-benefit">
+            <span class="social-benefit-check">✓</span>
+            Daily updates on active disinformation campaigns
+          </li>
+          <li class="social-benefit">
+            <span class="social-benefit-check">✓</span>
+            Expert analysis of FIMI tactics and Kremlin narratives
+          </li>
+          <li class="social-benefit">
+            <span class="social-benefit-check">✓</span>
+            Early access to new reports and database highlights
+          </li>
+        </ul>
+      </div>
+
+      <!-- Right: Platform cards -->
+      <div class="social-platforms">
+        <a href="https://twitter.com/EUvsDisinfo" class="platform-card" target="_blank">
+          <div class="platform-card-header">
+            <div class="platform-icon">𝕏</div>
+            <div class="platform-name">Twitter / X</div>
+          </div>
+          <div class="platform-desc">Real-time alerts on breaking disinformation cases and campaign updates</div>
+          <div class="platform-follow">Follow →</div>
+        </a>
+
+        <a href="https://www.youtube.com/channel/UCAiQd5dj168VcYa6Nly_jIw/featured" class="platform-card" target="_blank">
+          <div class="platform-card-header">
+            <div class="platform-icon">▶</div>
+            <div class="platform-name">YouTube</div>
+          </div>
+          <div class="platform-desc">Weekly video briefings, expert interviews, and Disinfo Review recaps</div>
+          <div class="platform-follow">Subscribe →</div>
+        </a>
+
+        <a href="https://www.linkedin.com/company/euvsdisinfo/" class="platform-card" target="_blank">
+          <div class="platform-card-header">
+            <div class="platform-icon">in</div>
+            <div class="platform-name">LinkedIn</div>
+          </div>
+          <div class="platform-desc">Policy analysis, institutional updates, and long-form research highlights</div>
+          <div class="platform-follow">Follow →</div>
+        </a>
+
+        <a href="https://www.facebook.com/EUvsDisinfo/" class="platform-card" target="_blank">
+          <div class="platform-card-header">
+            <div class="platform-icon">f</div>
+            <div class="platform-name">Facebook</div>
+          </div>
+          <div class="platform-desc">Community discussions, featured articles, and multimedia content</div>
+          <div class="platform-follow">Follow →</div>
+        </a>
+
+        <a href="https://www.instagram.com/EUvsDisinfo/" class="platform-card" target="_blank">
+          <div class="platform-card-header">
+            <div class="platform-icon">◎</div>
+            <div class="platform-name">Instagram</div>
+          </div>
+          <div class="platform-desc">Visual explainers, infographics, and myth-busting in quick-read format</div>
+          <div class="platform-follow">Follow →</div>
+        </a>
+
+        <a href="https://bsky.app/profile/euvsdisinfo.eu" class="platform-card" target="_blank">
+          <div class="platform-card-header">
+            <div class="platform-icon">☁</div>
+            <div class="platform-name">Bluesky</div>
+          </div>
+          <div class="platform-desc">Open conversations with researchers and the disinformation-aware community</div>
+          <div class="platform-follow">Follow →</div>
+        </a>
+
+        <a href="https://www.threads.net/@euvsdisinfo/" class="platform-card" target="_blank">
+          <div class="platform-card-header">
+            <div class="platform-icon">⊕</div>
+            <div class="platform-name">Threads</div>
+          </div>
+          <div class="platform-desc">Quick takes, real-time commentary, and behind-the-scenes updates</div>
+          <div class="platform-follow">Follow →</div>
+        </a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── 11. FOOTER ────────────────────────────────────────────────────── -->
+<footer class="site-footer section-wrap">
+  <span class="section-label" style="color:var(--foreground);background:rgba(255,255,255,.15);">10 · Footer · UPDATED</span>
+  <div class="container">
+    <div class="footer-top">
+
+      <!-- Col 1: Brand + Contact -->
+      <div>
+        <div class="footer-logo">EUvsDisinfo</div>
+        <div class="footer-tagline">Don't be deceived, question even more</div>
+        <div class="footer-contact">
+          European External Action Service (EEAS)<br>
+          Rdpt Robert Schuman 9<br>
+          1046 Brussels, Belgium<br><br>
+          <a href="https://euvsdisinfo.eu/#contacts-popup">General enquiries</a><br>
+          <a href="https://www.eeas.europa.eu/taxonomy/term/400308_en" target="_blank">EEAS press team</a>
+        </div>
+        <div class="footer-social">
+          <a href="https://www.facebook.com/EUvsDisinfo/" class="footer-social-icon" target="_blank" title="Facebook">f</a>
+          <a href="https://twitter.com/EUvsDisinfo" class="footer-social-icon" target="_blank" title="Twitter/X">𝕏</a>
+          <a href="https://www.linkedin.com/company/euvsdisinfo/" class="footer-social-icon" target="_blank" title="LinkedIn">in</a>
+          <a href="https://www.youtube.com/channel/UCAiQd5dj168VcYa6Nly_jIw/featured" class="footer-social-icon" target="_blank" title="YouTube">▶</a>
+          <a href="https://www.instagram.com/EUvsDisinfo/" class="footer-social-icon" target="_blank" title="Instagram">◎</a>
+          <a href="https://www.threads.net/@euvsdisinfo/" class="footer-social-icon" target="_blank" title="Threads">⊕</a>
+          <a href="https://bsky.app/profile/euvsdisinfo.eu" class="footer-social-icon" target="_blank" title="Bluesky">☁</a>
+        </div>
+      </div>
+
+      <!-- Col 2: Content -->
+      <div>
+        <div class="footer-col-title">Content</div>
+        <nav class="footer-nav">
+          <a href="https://euvsdisinfo.eu/articles/">Articles</a>
+          <a href="https://euvsdisinfo.eu/disinformation-cases/">Database</a>
+          <a href="https://euvsdisinfo.eu/learn/">Learn</a>
+          <a href="https://euvsdisinfo.eu/fimi-explorer/">FIMI Explorer</a>
+          <a href="https://euvsdisinfo.eu/research/">Research</a>
+          <a href="https://euvsdisinfo.eu/videos/">Videos</a>
+          <a href="https://euvsdisinfo.eu/guest-content/">Guest Content</a>
+          <a href="https://euvsdisinfo.eu/about/">About</a>
+        </nav>
+      </div>
+
+      <!-- Col 3: Categories -->
+      <div>
+        <div class="footer-col-title">Categories</div>
+        <nav class="footer-nav">
+          <a href="https://euvsdisinfo.eu/ukraine/">Ukraine</a>
+          <a href="https://euvsdisinfo.eu/belarus/">Belarus</a>
+          <a href="https://euvsdisinfo.eu/moldova/">Moldova</a>
+          <a href="https://euvsdisinfo.eu/georgia/">Georgia</a>
+          <a href="https://euvsdisinfo.eu/eap-summit/">Eastern Partnership</a>
+          <a href="https://euvsdisinfo.eu/china/">China</a>
+          <a href="https://euvsdisinfo.eu/africa/">Africa</a>
+        </nav>
+      </div>
+
+      <!-- Col 4: Languages (moved from header) -->
+      <div>
+        <div class="footer-col-title">Languages</div>
+        <div class="footer-langs">
+          <span class="footer-lang" style="opacity:1;border-color:rgba(255,255,255,.5);">EN</span>
+          <a href="https://euvsdisinfo.eu/ru/" class="footer-lang">RU</a>
+          <a href="https://euvsdisinfo.eu/it/" class="footer-lang">IT</a>
+          <a href="https://euvsdisinfo.eu/es/" class="footer-lang">ES</a>
+          <a href="https://euvsdisinfo.eu/fr/" class="footer-lang">FR</a>
+          <a href="https://euvsdisinfo.eu/de/" class="footer-lang">DE</a>
+          <a href="https://euvsdisinfo.eu/pl/" class="footer-lang">PL</a>
+          <a href="https://euvsdisinfo.eu/ua/" class="footer-lang">UA</a>
+          <a href="https://euvsdisinfo.eu/by/" class="footer-lang">BY</a>
+          <a href="https://euvsdisinfo.eu/ro/" class="footer-lang">RO</a>
+          <a href="https://euvsdisinfo.eu/ka/" class="footer-lang">KA</a>
+          <a href="https://euvsdisinfo.eu/hy/" class="footer-lang">HY</a>
+          <a href="https://euvsdisinfo.eu/az/" class="footer-lang">AZ</a>
+          <a href="https://euvsdisinfo.eu/zh/" class="footer-lang">ZH</a>
+          <a href="https://euvsdisinfo.eu/kz/" class="footer-lang">KZ</a>
+          <a href="https://euvsdisinfo.eu/bg/" class="footer-lang">BG</a>
+          <a href="https://euvsdisinfo.eu/si/" class="footer-lang">SI</a>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="footer-bottom">
+      <div class="footer-legal">
+        <a href="https://euvsdisinfo.eu/#">Cookies</a>
+        <a href="https://euvsdisinfo.eu/data-protection/">Data Protection</a>
+        <a href="https://euvsdisinfo.eu/#disclaimer">Disclaimer</a>
+        <a href="https://euvsdisinfo.eu/eeas-privacy-statement-data-protection-notice/">Privacy Statement</a>
+      </div>
+      <div class="footer-credit">© EUvsDisinfo · European External Action Service</div>
+    </div>
+  </div>
+</footer>
+
+<!-- ── 11. CHATBOT FAB ───────────────────────────────────────────────── -->
+<div class="chatbot-fab" title="Ask about disinformation">💬</div>
+<div class="chatbot-tooltip">Ask about disinformation</div>
+
+</body>
+</html>
