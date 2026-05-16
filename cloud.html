@@ -87,10 +87,10 @@
       // Нормализованные координаты курсора от -1 до 1
       const nx = (event.clientX - halfX) / halfX;
       const ny = (event.clientY - halfY) / halfY;
-      
+
       // Смещение камеры: множители 60 и 40 задают силу "панорамирования"
-      targetCamX = baseCamPos.x + nx * 60; 
-      targetCamY = baseCamPos.y - ny * 40; 
+      targetCamX = baseCamPos.x + nx * 120;
+      targetCamY = baseCamPos.y - ny * 120;
     });
 
     scene.add(new THREE.AmbientLight(0x8eb8ff, 0.10));
