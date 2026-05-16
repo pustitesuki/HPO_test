@@ -34,7 +34,6 @@
 
   <script type="module">
     import * as THREE from 'three';
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { Line2 } from 'three/addons/lines/Line2.js';
     import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
     import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
@@ -76,19 +75,23 @@
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.01, 4000);
     camera.position.set(80, 200, 300);
+    const baseCamPos = new THREE.Vector3(80, 200, 300);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.enableZoom = false;
-    controls.mouseButtons.WHEEL = null;
+    // ====== ИНТЕРАКТИВНОСТЬ КАМЕРЫ (PARALLAX) ======
+    let targetCamX = baseCamPos.x;
+    let targetCamY = baseCamPos.y;
 
-    // ---- запретить вращение на touch-устройствах ----
-    const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    if (isTouch) {
-      controls.enableRotate = false;
-      controls.enablePan = false;
-      renderer.domElement.style.touchAction = 'auto'; // позволяет скроллить страницу
-    }
+    document.addEventListener('mousemove', (event) => {
+      const halfX = window.innerWidth / 2;
+      const halfY = window.innerHeight / 2;
+      // Нормализованные координаты курсора от -1 до 1
+      const nx = (event.clientX - halfX) / halfX;
+      const ny = (event.clientY - halfY) / halfY;
+      
+      // Смещение камеры: множители 60 и 40 задают силу "панорамирования"
+      targetCamX = baseCamPos.x + nx * 60; 
+      targetCamY = baseCamPos.y - ny * 40; 
+    });
 
     scene.add(new THREE.AmbientLight(0x8eb8ff, 0.10));
     const key = new THREE.DirectionalLight(0xffffff, 0.65);
@@ -601,7 +604,11 @@
           }
         }
 
-        controls.update();
+        // Плавное движение камеры за курсором (parallax)
+        camera.position.x += (targetCamX - camera.position.x) * 0.03;
+        camera.position.y += (targetCamY - camera.position.y) * 0.03;
+        camera.lookAt(0, 0, 0); // Камера всегда смотрит в центр сцены
+
         renderer.render(scene, camera);
       }
     }
