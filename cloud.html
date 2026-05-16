@@ -77,6 +77,15 @@
     camera.position.set(80, 200, 300);
     const baseCamPos = new THREE.Vector3(80, 200, 300);
 
+    // ====== GLOBAL UNIFORMS ======
+    const globalUniforms = {
+      uTime: { value: 0.0 },
+      uLevitationAmp: { value: 0.0 },
+      uLevitationSpeedRatio: { value: LEVITATION_SPEED / PULSE_SPEED },
+      uMouse: { value: new THREE.Vector2(-2.0, -2.0) }, // курсор по умолчанию за экраном
+      uAspect: { value: window.innerWidth / window.innerHeight }
+    };
+
     // ====== ИНТЕРАКТИВНОСТЬ КАМЕРЫ (PARALLAX) ======
     let targetCamX = baseCamPos.x;
     let targetCamY = baseCamPos.y;
@@ -91,6 +100,9 @@
       // Смещение камеры: множители 60 и 40 задают силу "панорамирования"
       targetCamX = baseCamPos.x + nx * 120;
       targetCamY = baseCamPos.y - ny * 120;
+
+      // Передаем позицию мыши в шейдер (переворачиваем Y для WebGL)
+      globalUniforms.uMouse.value.set(nx, -ny);
     });
 
     scene.add(new THREE.AmbientLight(0x8eb8ff, 0.10));
@@ -351,12 +363,7 @@
       lineGeometry.setColors(colors);
     }
 
-    // ====== GLOBAL UNIFORMS ======
-    const globalUniforms = {
-      uTime: { value: 0.0 },
-      uLevitationAmp: { value: 0.0 },
-      uLevitationSpeedRatio: { value: LEVITATION_SPEED / PULSE_SPEED }
-    };
+
 
     async function rebuildLines() {
       linesGroup.clear();
@@ -486,7 +493,10 @@
           uniform float uPulseAmp;
           uniform float uLevitationAmp;
           uniform float uLevitationSpeedRatio;
+          uniform vec2 uMouse;
+          uniform float uAspect;
           varying float vDepth;
+          varying float vHover;
           void main(){
             // Добавляем индивидуальную фазу для случайного мигания
             float phase = position.x * 0.11 + position.y * 0.17 + position.z * 0.13;
@@ -501,8 +511,21 @@
             
             vec4 mv = modelViewMatrix * vec4(pos,1.0);
             vDepth = -mv.z;
-            gl_PointSize = currentSize * (300.0 / -mv.z);
             gl_Position = projectionMatrix * mv;
+
+            // Вычисляем расстояние от точки до курсора мыши
+            vec2 ndc = gl_Position.xy / gl_Position.w;
+            vec2 mouseDiff = ndc - uMouse;
+            mouseDiff.x *= uAspect;
+            float dist = length(mouseDiff);
+            
+            // Радиус подсветки курсора (0.45 = около 22% высоты экрана)
+            float hoverEffect = smoothstep(0.45, 0.0, dist);
+            vHover = hoverEffect;
+
+            currentSize += hoverEffect * 20.0; // Точки сильно увеличиваются вблизи курсора
+
+            gl_PointSize = currentSize * (300.0 / -mv.z);
           }
         `,
         fragmentShader: `
@@ -510,14 +533,19 @@
           uniform vec3 uWhite;
           uniform vec3 uBg;
           varying float vDepth;
+          varying float vHover;
           void main(){
             vec2 d = gl_PointCoord - vec2(0.5);
             float r = length(d);
             float soft = smoothstep(0.5, 0.05, r);   // мягкий круг
             // белая сердцевина → циан, затем к фону по краям
             vec3 base = mix(uWhite, uCyan, 0.5);
+            
+            // Эффект яркой белой вспышки при наведении
+            base += vec3(vHover * 1.5);
+            
             vec3 col = mix(uBg, base, soft);
-            gl_FragColor = vec4(col, soft);
+            gl_FragColor = vec4(col, soft + vHover * 0.4);
           }
         `,
         uniforms: {
@@ -526,6 +554,8 @@
           uLevitationAmp: globalUniforms.uLevitationAmp,
           uLevitationSpeedRatio: globalUniforms.uLevitationSpeedRatio,
           uTime: globalUniforms.uTime,
+          uMouse: globalUniforms.uMouse,
+          uAspect: globalUniforms.uAspect,
           uCyan: { value: CYAN.clone() },
           uWhite: { value: WHITE.clone() },
           uBg: { value: BG.clone() }
@@ -618,6 +648,7 @@
       camera.aspect = innerWidth / innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(innerWidth, innerHeight);
+      globalUniforms.uAspect.value = innerWidth / innerHeight;
       for (const l of linesGroup.children) {
         l.material.resolution.set(innerWidth, innerHeight);
       }
