@@ -38,11 +38,14 @@
     import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
     import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
+    // ====== MOBILE DETECTION ======
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+
     // ====== НАСТРОЙКИ (ВЫНЕСЕНЫ В НАЧАЛО) ======
 
     // 1. Основные параметры графа
     const DATA_URL = 'hpo_graph_b1300.json'; // Файл с данными
-    const MAX_POINTS = 10000;         // Максимальное количество узлов в памяти
+    const MAX_POINTS = isMobile ? 3000 : 10000; // Лимит узлов: меньше на mobile
     const R = 120;                    // Радиус сферы для начальной расстановки
     const ROT_SPEED_Y = 0.0006;       // Скорость вращения всей сцены
     const WIDTH_NEAR_FAR = [0.01, 0.3]; // Толщина линий (вблизи, вдали)
@@ -66,14 +69,21 @@
 
     // ====== RENDERER / SCENE ======
     const container = document.getElementById('container');
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const renderer = new THREE.WebGLRenderer({
+      antialias: !isMobile,
+      alpha: true,
+      powerPreference: isMobile ? 'low-power' : 'high-performance'
+    });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile ? 1.5 : 2));
     renderer.setSize(innerWidth, innerHeight);
     renderer.setClearColor(0x000000, 0); // ← прозрачный фон
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.01, 4000);
+    const camera = new THREE.PerspectiveCamera(
+      (isMobile && innerWidth < innerHeight) ? 55 : 40,
+      innerWidth / innerHeight, 0.01, 4000
+    );
     camera.position.set(80, 200, 300);
     const baseCamPos = new THREE.Vector3(80, 200, 300);
 
@@ -104,6 +114,17 @@
       // Передаем позицию мыши в шейдер (переворачиваем Y для WebGL)
       globalUniforms.uMouse.value.set(nx, -ny);
     });
+
+    document.addEventListener('touchmove', (event) => {
+      const touch = event.touches[0];
+      const halfX = window.innerWidth / 2;
+      const halfY = window.innerHeight / 2;
+      const nx = (touch.clientX - halfX) / halfX;
+      const ny = (touch.clientY - halfY) / halfY;
+      targetCamX = baseCamPos.x + nx * 60;
+      targetCamY = baseCamPos.y - ny * 60;
+      globalUniforms.uMouse.value.set(nx, -ny);
+    }, { passive: true });
 
     scene.add(new THREE.AmbientLight(0x8eb8ff, 0.10));
     const key = new THREE.DirectionalLight(0xffffff, 0.65);
@@ -344,7 +365,7 @@
       const q4 = q3.clone().lerp(a2, 0.60);
       const q5 = q4.clone().lerp(end, 0.99);
       const curve = new THREE.CatmullRomCurve3([p1, start, q1, q2, midFlow, q3, q4, q5, end, p2], false, 'centripetal', 0.55);
-      return curve.getPoints(42 + (Math.random() * 32 | 0));
+      return curve.getPoints(isMobile ? (20 + (Math.random() * 12 | 0)) : (42 + (Math.random() * 32 | 0)));
     }
 
     // ====== LINES (white -> #01DCFE -> #1A2537 with soft ends) ======
@@ -373,7 +394,7 @@
       bundleMidpoints(mids, 3);
 
       let k = 0;
-      const BATCH_SIZE = 25;
+      const BATCH_SIZE = isMobile ? 10 : 25;
       for (let idx = 0; idx < pairs.length; idx++) {
         if (idx > 0 && idx % BATCH_SIZE === 0) {
           await new Promise(r => requestAnimationFrame(r));
@@ -645,10 +666,12 @@
 
     // ====== RESIZE ======
     addEventListener('resize', () => {
-      camera.aspect = innerWidth / innerHeight;
+      const aspect = innerWidth / innerHeight;
+      camera.aspect = aspect;
+      if (isMobile) camera.fov = aspect < 1 ? 55 : 40;
       camera.updateProjectionMatrix();
       renderer.setSize(innerWidth, innerHeight);
-      globalUniforms.uAspect.value = innerWidth / innerHeight;
+      globalUniforms.uAspect.value = aspect;
       for (const l of linesGroup.children) {
         l.material.resolution.set(innerWidth, innerHeight);
       }
