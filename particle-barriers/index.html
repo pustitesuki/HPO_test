@@ -1,22 +1,526 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Particle Barriers</title>
-    <link rel="stylesheet" href="./style.css">
-    
-    <!-- ES Module Import Map to load Three.js natively in the browser without Node.js -->
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
-        }
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Particle Barriers</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { margin: 0; overflow: hidden; background-color: transparent; }
+    #particle-container {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      pointer-events: none;
+      z-index: -1;
+    }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <div id="particle-container"></div>
+  <script type="module">
+import * as THREE from 'three';
+
+// --- Platform-adaptive config ---
+function buildConfig() {
+  const w = window.innerWidth;
+  const mobile = w < 768;
+  const tablet = w >= 768 && w < 1200;
+  return {
+    particleCount:    mobile ? 350  : tablet ? 700  : 1600,
+    maxPixelRatio:    mobile ? 1    : tablet ? 1.5  : 2,
+    trailSegments:    mobile ? 6    : tablet ? 8    : 10,
+    particleSize:     { min: 2, max: 4 },
+    baseSpeed:        3,
+    colorFlying:      0x063D57,
+    colorCaptured:    0x01DDFF,
+    colorTrail:       0x01DDFF,
+    barrierCount:     7,
+    barrierCaptureZone: 20,
+    captureRates:     [0.25, 0.20, 0.18, 0.15, 0.12, 0.10, 0.08],
+    magnetizeDuration:    { min: 300, max: 500 },
+    colorTransitionDuration: 200,
+    pulsePeriod:      { min: 1500, max: 2500 },
+    pulseScale:       { min: 1.0, max: 1.4 },
+    glowOpacity:      { min: 0.3, max: 0.7 },
+    fadeDecay:        0.98,
+    fadeDuration:     2000,
+    trailLength:      110,
+    trailOpacityHead: 0.6,
+    trailOpacityTail: 0.0,
+  };
+}
+
+// --- Easing ---
+function easeOutCubic(t)   { return 1 - Math.pow(1 - t, 3); }
+function easeInOutQuad(t)  { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; }
+function easeInOutSine(t)  { return -(Math.cos(Math.PI * t) - 1) / 2; }
+
+// --- Shaders ---
+const particleVert = `
+attribute float size;
+attribute vec3 customColor;
+attribute float opacity;
+attribute float glowOpacity;
+varying vec3 vColor;
+varying float vOpacity;
+varying float vGlowOpacity;
+varying float vCoreRatio;
+void main() {
+  vColor = customColor;
+  vOpacity = opacity;
+  vGlowOpacity = glowOpacity;
+  vCoreRatio = 1.0 / 3.0;
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = size * 3.0 * (800.0 / -mvPosition.z);
+  gl_Position = projectionMatrix * mvPosition;
+}`;
+
+const particleFrag = `
+varying vec3 vColor;
+varying float vOpacity;
+varying float vGlowOpacity;
+varying float vCoreRatio;
+void main() {
+  vec2 cxy = 2.0 * gl_PointCoord - 1.0;
+  float dist = length(cxy);
+  if (dist > 1.0) discard;
+  float coreAlpha = smoothstep(vCoreRatio, vCoreRatio - 0.1, dist);
+  float glowAlpha = smoothstep(1.0, vCoreRatio, dist) * vGlowOpacity;
+  float finalAlpha = max(coreAlpha, glowAlpha) * vOpacity;
+  if (finalAlpha < 0.01) discard;
+  gl_FragColor = vec4(vColor, finalAlpha);
+}`;
+
+const trailVert = `
+attribute float vertexAlpha;
+attribute vec3 customColor;
+varying float vAlpha;
+varying vec3 vColor;
+void main() {
+  vAlpha = vertexAlpha;
+  vColor = customColor;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const trailFrag = `
+varying float vAlpha;
+varying vec3 vColor;
+void main() {
+  if (vAlpha < 0.01) discard;
+  gl_FragColor = vec4(vColor, vAlpha);
+}`;
+
+// --- BarrierSystem ---
+class BarrierSystem {
+  constructor(config, width) {
+    this.config = config;
+    this.updateWidth(width);
+  }
+  updateWidth(width) {
+    this.barriers = [];
+    const d = width / 16;
+    for (let i = 0; i < this.config.barrierCount; i++) {
+      this.barriers.push({ x: (i - 3) * d, rate: this.config.captureRates[i] });
+    }
+  }
+  checkCapture(x, oldX, lastIdx) {
+    for (let i = lastIdx + 1; i < this.barriers.length; i++) {
+      const b = this.barriers[i];
+      const zone = b.x - this.config.barrierCaptureZone;
+      if (oldX < zone && x >= zone) {
+        return Math.random() < b.rate
+          ? { passed: false, captured: true,  barrierIndex: i, barrierX: b.x }
+          : { passed: true,  captured: false, barrierIndex: i, barrierX: b.x };
       }
-    </script>
-  </head>
-  <body>
-    <div id="particle-container"></div>
-    <script type="module" src="./main.js"></script>
-  </body>
+    }
+    return { passed: false, captured: false };
+  }
+}
+
+// --- TrailSystem ---
+class TrailSystem {
+  constructor(config, scene) {
+    this.config = config;
+    this.scene = scene;
+    const count = config.particleCount;
+    const seg = config.trailSegments;
+    const total = count * seg;
+    this.geometry = new THREE.BufferGeometry();
+    this.positions = new Float32Array(total * 3);
+    this.alphas    = new Float32Array(total);
+    this.colors    = new Float32Array(total * 3);
+    this.geometry.setAttribute('position',    new THREE.BufferAttribute(this.positions, 3));
+    this.geometry.setAttribute('vertexAlpha', new THREE.BufferAttribute(this.alphas, 1));
+    this.geometry.setAttribute('customColor', new THREE.BufferAttribute(this.colors, 3));
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {}, vertexShader: trailVert, fragmentShader: trailFrag,
+      transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false,
+    });
+    const idx = [];
+    for (let i = 0; i < count; i++) {
+      const base = i * seg;
+      for (let j = 0; j < seg - 1; j++) idx.push(base + j, base + j + 1);
+    }
+    this.geometry.setIndex(idx);
+    this.lines = new THREE.LineSegments(this.geometry, this.material);
+    this.lines.frustumCulled = false;
+    scene.add(this.lines);
+  }
+  updateTrail(i, p) {
+    const seg = this.config.trailSegments;
+    const base = i * seg;
+    if (p.state === 'DEAD' || p.trailHistory.length < 3) {
+      for (let j = 0; j < seg; j++) this.alphas[base + j] = 0;
+      return;
+    }
+    const h = p.trailHistory;
+    let oldest = 0;
+    while (oldest < h.length - 1 && p.x - h[oldest].x > p.trailLength) oldest++;
+    const pEnd = new THREE.Vector3(p.x, p.y, p.z);
+    let pStart, pCtrl;
+    if (h.length - oldest >= 3) {
+      pStart = new THREE.Vector3(h[oldest].x, h[oldest].y, p.z);
+      const mid = h[Math.floor((oldest + h.length - 1) / 2)];
+      pCtrl = new THREE.Vector3(mid.x, mid.y, p.z);
+    } else {
+      pStart = new THREE.Vector3(h[oldest].x, h[oldest].y, p.z);
+      pCtrl  = new THREE.Vector3((pEnd.x + pStart.x) * 0.5, (pEnd.y + pStart.y) * 0.5, p.z);
+    }
+    const pts = new THREE.QuadraticBezierCurve3(pStart, pCtrl, pEnd).getPoints(seg - 1);
+    for (let j = 0; j < seg; j++) {
+      const pt = pts[j];
+      const i3 = (base + j) * 3;
+      this.positions[i3] = pt.x; this.positions[i3+1] = pt.y; this.positions[i3+2] = pt.z;
+      const t = j / (seg - 1);
+      this.alphas[base + j] = (this.config.trailOpacityTail + t * (this.config.trailOpacityHead - this.config.trailOpacityTail)) * p.fadeOpacity;
+      this.colors[i3] = p.trailR; this.colors[i3+1] = p.trailG; this.colors[i3+2] = p.trailB;
+    }
+  }
+  flush() {
+    this.geometry.attributes.position.needsUpdate    = true;
+    this.geometry.attributes.vertexAlpha.needsUpdate = true;
+    this.geometry.attributes.customColor.needsUpdate = true;
+  }
+}
+
+// --- ConnectionSystem ---
+class ConnectionSystem {
+  constructor(config, scene) {
+    this.links    = [];
+    this.maxLinks = config.particleCount;
+    this.seg      = 15;
+    this.geometry = new THREE.BufferGeometry();
+    this.positions = new Float32Array(this.maxLinks * this.seg * 3);
+    this.alphas    = new Float32Array(this.maxLinks * this.seg);
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    this.geometry.setAttribute('alpha',    new THREE.BufferAttribute(this.alphas, 1));
+    this.material = new THREE.ShaderMaterial({
+      uniforms: { color: { value: new THREE.Color(0xffffff) } },
+      vertexShader: `
+        attribute float alpha; varying float vAlpha;
+        void main() { vAlpha = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+      fragmentShader: `
+        uniform vec3 color; varying float vAlpha;
+        void main() { if(vAlpha<0.01) discard; gl_FragColor = vec4(color, vAlpha * 0.15); }`,
+      transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false,
+    });
+    const idx = [];
+    for (let i = 0; i < this.maxLinks; i++) {
+      const b = i * this.seg;
+      for (let j = 0; j < this.seg - 1; j++) idx.push(b + j, b + j + 1);
+    }
+    this.geometry.setIndex(idx);
+    this.lines = new THREE.LineSegments(this.geometry, this.material);
+    this.lines.frustumCulled = false;
+    scene.add(this.lines);
+  }
+  addLink(pA, pB) {
+    if (this.links.length >= this.maxLinks) return;
+    const dx = pB.x - pA.x, dy = pB.y - pA.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const offset = dist * (0.15 + Math.random() * 0.2) * (Math.random() < 0.5 ? 1 : -1);
+    const ctrl = {
+      x: (pA.x+pB.x)/2 + (-dy/dist) * offset,
+      y: (pA.y+pB.y)/2 + ( dx/dist) * offset,
+    };
+    const linkIdx = this.links.length;
+    this.links.push({ pA, pB, ctrl });
+    const base = linkIdx * this.seg;
+    const pts = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(pA.x, pA.y, 0),
+      new THREE.Vector3(ctrl.x, ctrl.y, 0),
+      new THREE.Vector3(pB.x, pB.y, 0)
+    ).getPoints(this.seg - 1);
+    for (let j = 0; j < this.seg; j++) {
+      const i3 = (base + j) * 3;
+      this.positions[i3] = pts[j].x; this.positions[i3+1] = pts[j].y; this.positions[i3+2] = 0;
+      this.alphas[base + j] = Math.sin((j / (this.seg - 1)) * Math.PI);
+    }
+    this.geometry.attributes.position.needsUpdate = true;
+    this.geometry.attributes.alpha.needsUpdate    = true;
+  }
+}
+
+// --- ParticleSystem ---
+class ParticleSystem {
+  constructor(config, scene, barriers, trails, connections) {
+    this.config      = config;
+    this.barriers    = barriers;
+    this.trails      = trails;
+    this.connections = connections;
+    this.captured    = [];
+    this.vw = window.innerWidth;
+    this.vh = window.innerHeight;
+    this.cFlying   = new THREE.Color(config.colorFlying);
+    this.cCaptured = new THREE.Color(config.colorCaptured);
+    this.cTrail    = new THREE.Color(config.colorTrail);
+
+    // Pre-allocate particle objects
+    this.particles = Array.from({ length: config.particleCount }, () => ({
+      state: 'DEAD', x: 0, y: 0, z: 0,
+      size: 0, currentSize: 0, speed: 0, trailLength: 0,
+      vy: 0, mode: 'drift', modeTimer: 0,
+      targetY: 0, targetX: 0, noiseOffset: 0,
+      magnetizeTimer: 0, magnetizeDuration: 0, startX: 0,
+      colorAnimTimer: 0, pulsePhase: 0, pulsePeriod: 0,
+      fadeOpacity: 0, glowOpacity: 0,
+      r: 0, g: 0, b: 0, trailR: 0, trailG: 0, trailB: 0,
+      trailHistory: [], barrierIndex: -1,
+    }));
+
+    const n = config.particleCount;
+    this.geometry    = new THREE.BufferGeometry();
+    this.posArr      = new Float32Array(n * 3);
+    this.colArr      = new Float32Array(n * 3);
+    this.sizeArr     = new Float32Array(n);
+    this.opacityArr  = new Float32Array(n);
+    this.glowArr     = new Float32Array(n);
+    this.geometry.setAttribute('position',    new THREE.BufferAttribute(this.posArr,     3));
+    this.geometry.setAttribute('customColor', new THREE.BufferAttribute(this.colArr,     3));
+    this.geometry.setAttribute('size',        new THREE.BufferAttribute(this.sizeArr,    1));
+    this.geometry.setAttribute('opacity',     new THREE.BufferAttribute(this.opacityArr, 1));
+    this.geometry.setAttribute('glowOpacity', new THREE.BufferAttribute(this.glowArr,    1));
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {}, vertexShader: particleVert, fragmentShader: particleFrag,
+      transparent: true, blending: THREE.NormalBlending, depthTest: false, depthWrite: false,
+    });
+    this.points = new THREE.Points(this.geometry, this.material);
+    this.points.frustumCulled = false;
+    scene.add(this.points);
+
+    this.particles.forEach(p => this.reset(p, true));
+  }
+
+  reset(p, initial = false) {
+    p.state        = 'FLYING';
+    const left     = -this.vw / 2;
+    p.x            = initial ? left - Math.random() * 6000 : left - Math.random() * 300;
+    p.y = p.z      = 0;
+    p.size         = this.config.particleSize.min + Math.random() * (this.config.particleSize.max - this.config.particleSize.min);
+    p.currentSize  = p.size;
+    p.speed        = this.config.baseSpeed * (0.85 + Math.random() * 0.30);
+    p.trailLength  = this.config.trailLength * (0.50 + Math.random() * 1.25);
+    p.vy           = 0;
+    p.noiseOffset  = Math.random();
+    p.r = this.cFlying.r;  p.g = this.cFlying.g;  p.b = this.cFlying.b;
+    p.trailR = this.cTrail.r; p.trailG = this.cTrail.g; p.trailB = this.cTrail.b;
+    p.fadeOpacity  = 1;
+    p.glowOpacity  = 0;
+    p.barrierIndex = -1;
+    p.magnetizeTimer = p.colorAnimTimer = 0;
+    p.pulsePhase   = Math.random();
+    p.pulsePeriod  = this.config.pulsePeriod.min + Math.random() * (this.config.pulsePeriod.max - this.config.pulsePeriod.min);
+    p.trailHistory = [];
+    this.pickMode(p);
+  }
+
+  pickMode(p) {
+    const r = Math.random();
+    if      (r < 0.25) { p.mode = 'linear'; p.modeTimer = 400 + Math.random() * 800; }
+    else if (r < 0.55) { p.mode = 'drift';  p.modeTimer = 500 + Math.random() * 1000; }
+    else if (r < 0.75) { p.mode = 'seek';   p.targetY = (Math.random() - 0.5) * 400; p.modeTimer = 300 + Math.random() * 500; }
+    else if (r < 0.90) { p.mode = 'jitter'; p.modeTimer = 200 + Math.random() * 400; }
+    else               { p.mode = 'coast';  p.modeTimer = 600 + Math.random() * 1400; }
+  }
+
+  physics(p, dt, time) {
+    p.modeTimer -= dt;
+    if (p.modeTimer <= 0) this.pickMode(p);
+    const ts = dt / 16.666;
+    if      (p.mode === 'drift')  { const nv = Math.sin(time * 0.002 + p.noiseOffset * 1000) + Math.cos(time * 0.0031 + p.noiseOffset * 2000); p.vy += nv * 10 * ts; }
+    else if (p.mode === 'seek')   { p.vy += (p.targetY - p.y) * 0.08 * ts; }
+    else if (p.mode === 'jitter') { if (Math.random() < 0.33) p.vy += Math.random() * 120 - 60; }
+    else if (p.mode === 'coast')  { p.vy *= Math.pow(0.95, ts); }
+    p.vy *= Math.pow(0.99, ts);
+    if (Math.abs(p.y) > 200) {
+      const ov = (Math.abs(p.y) - 200) / 50;
+      p.vy -= Math.sign(p.y) * ov * ov * 2.5 * ts;
+    }
+    p.vy = Math.max(-150, Math.min(150, p.vy));
+    p.y += p.vy * (dt / 1000);
+  }
+
+  updateBounds(w, h) { this.vw = w; this.vh = h; }
+
+  update(dt, time) {
+    const cfg = this.config;
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+
+      if (p.state === 'DEAD') {
+        this.reset(p);
+
+      } else if (p.state === 'FLYING') {
+        const oldX = p.x;
+        p.x += p.speed * (dt / 16.666);
+        if (p.x <= -this.vw / 2) { p.y = 0; p.vy = 0; }
+        else this.physics(p, dt, time);
+
+        const cr = this.barriers.checkCapture(p.x, oldX, p.barrierIndex);
+        if (cr.passed) {
+          p.barrierIndex = cr.barrierIndex;
+          p.vy += Math.random() * 160 - 80;
+          this.pickMode(p);
+        } else if (cr.captured) {
+          p.state = 'MAGNETIZING';
+          p.targetX = cr.barrierX;
+          p.magnetizeDuration = cfg.magnetizeDuration.min + Math.random() * (cfg.magnetizeDuration.max - cfg.magnetizeDuration.min);
+          p.magnetizeTimer = 0;
+          p.startX = p.x;
+        }
+        if (p.barrierIndex >= cfg.barrierCount - 1) p.state = 'FADING_OUT';
+
+      } else if (p.state === 'MAGNETIZING') {
+        p.magnetizeTimer += dt;
+        let t = p.magnetizeTimer / p.magnetizeDuration;
+        if (t >= 1) {
+          t = 1;
+          p.state = 'CAPTURED';
+          p.colorAnimTimer = 0;
+          this.captured.push(p);
+          if (Math.random() < 0.20 && this.captured.length > 1) {
+            let best = null, bestD = Infinity;
+            for (let k = 0; k < 8; k++) {
+              const c = this.captured[Math.floor(Math.random() * this.captured.length)];
+              if (c !== p) {
+                const d = Math.abs(c.x - p.x) + Math.abs(c.y - p.y);
+                if (d < bestD) { bestD = d; best = c; }
+              }
+            }
+            if (best) this.connections.addLink(p, best);
+          }
+        }
+        p.x = p.startX + (p.targetX - p.startX) * easeOutCubic(t);
+
+      } else if (p.state === 'CAPTURED') {
+        p.colorAnimTimer += dt;
+        const ec = easeInOutQuad(Math.min(p.colorAnimTimer / cfg.colorTransitionDuration, 1));
+        p.r = this.cFlying.r + (this.cCaptured.r - this.cFlying.r) * ec;
+        p.g = this.cFlying.g + (this.cCaptured.g - this.cFlying.g) * ec;
+        p.b = this.cFlying.b + (this.cCaptured.b - this.cFlying.b) * ec;
+        p.trailR = this.cTrail.r + (this.cCaptured.r - this.cTrail.r) * ec;
+        p.trailG = this.cTrail.g + (this.cCaptured.g - this.cTrail.g) * ec;
+        p.trailB = this.cTrail.b + (this.cCaptured.b - this.cTrail.b) * ec;
+        const pulse = easeInOutSine(((time % p.pulsePeriod) / p.pulsePeriod) * 2);
+        p.currentSize  = p.size * (cfg.pulseScale.min + (cfg.pulseScale.max - cfg.pulseScale.min) * pulse);
+        p.glowOpacity  = cfg.glowOpacity.min + (cfg.glowOpacity.max - cfg.glowOpacity.min) * pulse;
+
+      } else if (p.state === 'FADING_OUT') {
+        const ts = dt / 16.666;
+        p.speed *= Math.pow(cfg.fadeDecay, ts);
+        p.x += p.speed * ts;
+        this.physics(p, dt, time);
+        p.fadeOpacity -= dt / cfg.fadeDuration;
+        if (p.fadeOpacity <= 0) { p.state = 'DEAD'; p.fadeOpacity = 0; }
+      }
+
+      if (p.state === 'FLYING' || p.state === 'MAGNETIZING' || p.state === 'FADING_OUT') {
+        p.trailHistory.push({ x: p.x, y: p.y });
+        if (p.trailHistory.length > 50) p.trailHistory.shift();
+      }
+      if (p.state !== 'DEAD') this.trails.updateTrail(i, p);
+
+      const i3 = i * 3;
+      this.posArr[i3]   = p.x; this.posArr[i3+1]  = p.y; this.posArr[i3+2]  = p.z;
+      this.colArr[i3]   = p.r; this.colArr[i3+1]  = p.g; this.colArr[i3+2]  = p.b;
+      this.sizeArr[i]    = p.currentSize || p.size;
+      this.opacityArr[i] = p.state === 'DEAD' ? 0 : p.fadeOpacity;
+      this.glowArr[i]    = p.glowOpacity;
+    }
+    this.geometry.attributes.position.needsUpdate    = true;
+    this.geometry.attributes.customColor.needsUpdate = true;
+    this.geometry.attributes.size.needsUpdate        = true;
+    this.geometry.attributes.opacity.needsUpdate     = true;
+    this.geometry.attributes.glowOpacity.needsUpdate = true;
+  }
+}
+
+// --- Main orchestrator ---
+class ParticleBarriers {
+  constructor(container, config) {
+    this.container  = container;
+    this.config     = config;
+    this.isRunning  = false;
+    this.lastTime   = 0;
+
+    this.scene    = new THREE.Scene();
+    this.camera   = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 2000);
+    this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, config.maxPixelRatio));
+    this.renderer.setSize(innerWidth, innerHeight);
+    container.appendChild(this.renderer.domElement);
+
+    this.barriers    = new BarrierSystem(config, innerWidth);
+    this.trails      = new TrailSystem(config, this.scene);
+    this.connections = new ConnectionSystem(config, this.scene);
+    this.particles   = new ParticleSystem(config, this.scene, this.barriers, this.trails, this.connections);
+
+    window.addEventListener('resize', () => {
+      const w = innerWidth, h = innerHeight;
+      this.renderer.setSize(w, h);
+      this.camera.aspect = w / h;
+      this.camera.position.z = h / (2 * Math.tan(this.camera.fov * Math.PI / 360));
+      this.camera.updateProjectionMatrix();
+      this.barriers.updateWidth(w);
+      this.particles.updateBounds(w, h);
+    });
+  }
+
+  start() {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    this.lastTime  = performance.now();
+    // Trigger resize to fit camera correctly
+    const h = innerHeight;
+    this.camera.position.z = h / (2 * Math.tan(this.camera.fov * Math.PI / 360));
+    this.camera.updateProjectionMatrix();
+    this.renderer.setAnimationLoop(t => {
+      const dt = Math.min(t - this.lastTime, 50); // cap at 50 ms to avoid jump on tab restore
+      this.lastTime = t;
+      this.particles.update(dt, t);
+      this.trails.flush();
+      if (!document.hidden) this.renderer.render(this.scene, this.camera);
+    });
+  }
+
+  pause() {
+    this.isRunning = false;
+    this.renderer.setAnimationLoop(null);
+  }
+}
+
+// --- Boot ---
+const container = document.querySelector('#particle-container');
+const viz = new ParticleBarriers(container, buildConfig());
+
+new IntersectionObserver(entries =>
+  entries.forEach(e => e.isIntersecting ? viz.start() : viz.pause())
+).observe(container);
+  </script>
+</body>
 </html>
