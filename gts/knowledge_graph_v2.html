@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clinical Knowledge Graph — Pipeline</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&display=swap"
+    rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      right: 26px;
+      font-size: 9px;
+      color: rgba(0, 170, 200, 0.35);
+      pointer-events: none;
+      font-family: 'Space Grotesk', sans-serif;
+      letter-spacing: 0.1em;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="c"></canvas>
+  <div class="hint">CLINICAL KNOWLEDGE GRAPH</div>
+  <script>
+    'use strict';
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ALL SETTINGS — tweak everything here
+    // ═══════════════════════════════════════════════════════════════════════════
+    const CFG = {
+
+      // ── Typography (all labels) — requires Space Grotesk <link> in <head> ───────
+      FONT_FAMILY: 'Space Grotesk',
+      FONT_PILL_CHIP: '300 12px "Space Grotesk", sans-serif',
+      FONT_PILL_HUB: '300 12px "Space Grotesk", sans-serif',
+      FONT_BARRIER: '300 13px "Space Grotesk", sans-serif',
+      FONT_HINT: '12px',
+      SECTION_LABEL_INSET: 8,   // px from zone left edge (same as barrier label)
+      CONVEYOR_ZONE_LABEL: 'Unstructured data',
+      KG_ZONE_LABEL: 'Knowledge graph',
+
+      // ── Label color (single blue for every label) ─────────────────────────────
+      LABEL_RGB: [0, 0, 0],
+      LABEL_BG_OPACITY: 1,      // white pill fill (30%)
+      LABEL_GAP_ABOVE: 6,        // px between content top and pill bottom
+      LABEL_PILL_PAD_X: 18,
+      LABEL_PILL_PAD_Y: 18,
+      LABEL_PILL_RADIUS: 2,
+      LABEL_STROKE_OP: 0.35,
+
+      // ── Layout ────────────────────────────────────────────────────────────────
+      BARRIER_X_FRAC: 0.5,         // barrier line x as fraction of screen width
+      NET_CX_FRAC: 0.695,          // network center x
+      NET_CY_FRAC: 0.500,          // network center y
+      CONVEYOR_HEIGHT_FRAC: 0.65,  // conveyor + barrier height as fraction of screen height (centered)
+      CONVEYOR_ROWS: 16,           // number of rows (stack is centered, not stretched)
+      // vertical pitch between row tops = GRID_CELL + GRID_GAP
+
+      // ── Pixel Grid (left zone) ────────────────────────────────────────────────
+      GRID_CELL: 32,     // square size px
+      GRID_GAP: 8,       // gap between squares px (also row/column pitch gap)
+      GRID_DENSITY: 0,    // repeating belt (0 = off). Use with CONVEYOR_SPAWN_RATE or alone
+      GRID_PATTERN_COLS: 72,    // pattern repeats every N columns (only if GRID_DENSITY > 0)
+      GRID_CHIP_PROB: 0.3,  // 0–1: share of squares that get a chip label
+      // Conveyor: fast left → stall before barrier → even queue (STEP)
+      CONVEYOR_QUEUE_SCREEN_FRAC: 0.34, // screen band for queue + overlap resolve
+      CONVEYOR_QUEUE_LOGICAL_FRAC: 0.34,// logical span reference for queue zone
+      CONVEYOR_QUEUE_LOGICAL_DRAG: 0.02, // 0.02–0.2: lower = longer queue (spawns kept until screen reaches barrier)
+      CONVEYOR_QUEUE_APPROACH_POWER: 2, // 1–8 only (shape); huge values snap all squares to barrier
+      CONVEYOR_LEFT_EMPTY_POWER: 3.5,   // >1 = mostly empty left before queue zone
+      CONVEYOR_LEFT_FAST: 2.5,          // x<0: fast entry from left edge
+      CONVEYOR_SCROLL_MUL: 5.0,         // belt always fast; stall is visual (mapping)
+      CONVEYOR_BARRIER_PAD: 6,         // min px from barrier line to square edge
+      CONVEYOR_LABEL_MARGIN: 24,       // no chip labels closer than this to barrier
+      GRID_ROW_SPEED_MIN: -0.5,        // base logical px/frame per row
+      GRID_ROW_SPEED_MAX: -2.5,
+      CONVEYOR_SPAWN_RATE: 0.5,         // new squares/sec per row (dynamic spawn). 0 = no spawn
+      //   Opacity: base ± pulse amplitude (clamped 0.04–0.94)
+      GRID_OPACITY_BASE: 0.75,
+      GRID_OPACITY_AMP: 0.52,
+      GRID_PULSE_SPEED: 0.00, // phase increment per frame per column
+      GRID_FADE_ZONE: 0,     // 0 = keep squares visible in queue at barrier
+      GRID_COLOR: [0, 215, 255], // [r,g,b] of the squares
+
+      // ── Data Streams (brrier → network) ─────────────────────────────────────
+      STREAM_COUNT: 96,    // number of animated lines
+      STREAM_PATH_ALPHA: 0.52,  // static path line opacity
+      STREAM_PATH_WIDTH: 0.65,  // path line width
+      STREAM_DOT_R: 2.6,   // moving dot radius
+      STREAM_DOT_ALPHA: 0.95,  // moving dot opacity
+      STREAM_GLOW_R: 7.0,   // glow circle radius around dot
+      STREAM_GLOW_ALPHA: 0.28,  // glow opacity
+      STREAM_SPEED_MIN: 0.0030,// min t-increment per frame
+      STREAM_SPEED_MAX: 0.0072,// max t-increment per frame
+
+      // ── Barrier line ──────────────────────────────────────────────────────────
+      BARRIER_LINE_W: 3,   // px
+      BARRIER_COLOR: [0, 0, 0],
+      BARRIER_LABEL: 'Knowledge Extraction',
+      BARRIER_LABEL_OP: 0.85,
+
+      // ── Network physics ───────────────────────────────────────────────────────
+      ALPHA_DECAY: 0.0018,
+      ALPHA_MIN: 0.008,
+      INIT_VEL: 1.5,
+      GRAVITY_MAIN: 0.005,
+      GRAVITY_MAIN_BASE: 0.60,
+      GRAVITY_MAIN_R: 0.025,
+      GRAVITY_PERI: 0.0018,
+      REPULSION_RANGE: 230,
+      REPULSION_R_MUL: 5,
+      REPULSION_BASE: 180,
+      COLLISION_GAP: 1.5,
+      COLLISION_RESP: 0.45,
+      SPRING_REST_BASE: 18,
+      SPRING_REST_R: 0.85,
+      SPRING_K: 0.022,
+      DAMPING: 0.44,
+
+      // ── Network rendering ─────────────────────────────────────────────────────
+      EDGE_MAIN_ALPHA: 0.12,
+      EDGE_MAIN_ALPHA_R: 0.0025,
+      EDGE_PERI_ALPHA: 0.36,
+      EDGE_PERI_ALPHA_R: 0.012,
+      EDGE_MAIN_W: 0.55,
+      EDGE_PERI_W: 0.75,
+      EDGE_CURVE_F: 0.82,
+      NODE_GLOW_THRESH: 7,
+      NODE_GLOW_R: 2.8,
+      NODE_GLOW_INNER: 0.35,
+      NODE_GLOW_A_MAIN: 0.10,
+      NODE_GLOW_A_PERI: 0.16,
+      NODE_A_BASE: 0.42,
+      NODE_A_R: 0.009,
+      NODE_A_MAX: 0.92,
+      NODE_A_PERI: 0.82,
+      NODE_A_SPREAD: 0.45,
+      BREATHE_AMP: 0.25,
+      BREATHE_SPEED: 1.05,
+      BREATHE_THRESH: 0.48,
+      NET_FADE_START: 0.70,  // alpha_sim at which network starts fading in
+      NET_FADE_END: 0.45,  // alpha_sim at which network is fully visible
+
+      // ── Network node counts ───────────────────────────────────────────────────
+      SH_COUNT: 16, SH_R_MIN: 22, SH_R_RANGE: 11, SH_START_R: 4,
+      PH_COUNT: 300, PH_R_MIN: 5, PH_R_RANGE: 9, PH_START_R: 32,
+      PH_SH_E2: 0.50, PH_PH_E1: 0.55, PH_PH_E2: 0.28,
+      SEC_COUNT: 650, SEC_R_MIN: 3.5, SEC_R_RANGE: 5.5, SEC_START_R: 88,
+      SEC_E1: 0.45, SEC_E2: 0.15,
+      ML_COUNT: 240, ML_R_MIN: 1.0, ML_R_RANGE: 3.2, ML_START_R: 110,
+      ML_SEC_P: 0.72, ML_ML_P: 0.22,
+      PERI_COUNT: 12,
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Setup
+    // ═══════════════════════════════════════════════════════════════════════════
+    let W = window.innerWidth, H = window.innerHeight;
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    canvas.width = W; canvas.height = H;
+
+    const BX      = () => W * CFG.BARRIER_X_FRAC;
+    const NCX     = () => W * CFG.NET_CX_FRAC;
+    const NCY     = () => H * CFG.NET_CY_FRAC;
+    const GRID_H  = () => H * CFG.CONVEYOR_HEIGHT_FRAC;
+    const GRID_TOP = () => (H - GRID_H()) / 2;
+    const GRID_BOT = () => GRID_TOP() + GRID_H();
+
+    function conveyorStackTop() {
+      const numRows = Math.max(1, Math.floor(CFG.CONVEYOR_ROWS));
+      const rowStep = CFG.GRID_CELL + CFG.GRID_GAP;
+      const blockH = CFG.GRID_CELL + (numRows - 1) * rowStep;
+      return GRID_TOP() + (GRID_H() - blockH) * 0.5;
+    }
+
+    // Same style/placement as AI EXTRACTION LAYER (left pill above band top)
+    function drawSectionLabel(text, zoneLeftX) {
+      drawLabelPill(
+        text,
+        zoneLeftX + CFG.SECTION_LABEL_INSET,
+        GRID_TOP(),
+        CFG.BARRIER_LABEL_OP,
+        CFG.FONT_BARRIER,
+        'left'
+      );
+    }
+
+    function drawSectionLabelRight(text, zoneRightX) {
+      drawLabelPill(
+        text,
+        zoneRightX - CFG.SECTION_LABEL_INSET,
+        GRID_TOP(),
+        CFG.BARRIER_LABEL_OP,
+        CFG.FONT_BARRIER,
+        'right'
+      );
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────────
+    function rrect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+      ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+      ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+      ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+      ctx.closePath();
+    }
+
+    const [LR, LG, LB] = CFG.LABEL_RGB;
+
+    // Pill sits above contentTopY (top edge of square / node / band)
+    function drawLabelPill(text, anchorX, contentTopY, op, font, align = 'center') {
+      if (op < 0.04) return;
+      ctx.save();
+      ctx.globalAlpha = op;
+      ctx.font = font;
+      const tw = ctx.measureText(text).width;
+      const pw = tw + CFG.LABEL_PILL_PAD_X;
+      const ph = CFG.LABEL_PILL_PAD_Y;
+      const pr = CFG.LABEL_PILL_RADIUS;
+      const pillBottom = contentTopY - CFG.LABEL_GAP_ABOVE;
+      const py = pillBottom - ph;
+      let px, textX;
+      if (align === 'left') {
+        px = anchorX;
+        textX = anchorX + pw / 2;
+      } else if (align === 'right') {
+        px = anchorX - pw;
+        textX = anchorX - pw / 2;
+      } else {
+        px = anchorX - pw / 2;
+        textX = anchorX;
+      }
+
+      ctx.fillStyle = `rgba(255,255,255,${CFG.LABEL_BG_OPACITY})`;
+      rrect(px, py, pw, ph, pr);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(${LR},${LG},${LB},${CFG.LABEL_STROKE_OP})`;
+      ctx.lineWidth = 0.8;
+      rrect(px, py, pw, ph, pr);
+      ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(${LR},${LG},${LB},1)`;
+      ctx.fillText(text, textX, py + ph / 2);
+      ctx.restore();
+    }
+
+    function bezPt(ax, ay, bx, by, cx2, cy, dx, dy, t) {
+      const u = 1 - t;
+      return {
+        x: u * u * u * ax + 3 * u * u * t * bx + 3 * u * t * t * cx2 + t * t * t * dx,
+        y: u * u * u * ay + 3 * u * u * t * by + 3 * u * t * t * cy + t * t * t * dy
+      };
+    }
+
+    // Dot-grid background pattern (drawn once)
+    const dotC = document.createElement('canvas'); dotC.width = 38; dotC.height = 38;
+    const dotX = dotC.getContext('2d');
+    dotX.fillStyle = 'rgba(0,190,215,0.052)';
+    dotX.beginPath(); dotX.arc(19, 19, 0.85, 0, Math.PI * 2); dotX.fill();
+    const DOT_PAT = ctx.createPattern(dotC, 'repeat');
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PIXEL GRID — one big continuous scrolling grid across the left zone
+    // ═══════════════════════════════════════════════════════════════════════════
+    const CELL = CFG.GRID_CELL;
+    const GAP = CFG.GRID_GAP;
+    const STEP = CELL + GAP;       // 11px
+    const PCOLS = CFG.GRID_PATTERN_COLS;
+
+    function randomChipLabel() {
+      const p = CFG.GRID_CHIP_PROB;
+      if (p <= 0) return null;
+      if (p >= 1 || Math.random() < p) {
+        return FILE_LABELS[Math.floor(Math.random() * FILE_LABELS.length)];
+      }
+      return null;
+    }
+
+    const FILE_LABELS = ['Guidelines', 'Medical files', 'Case files', "Doctor's notes",
+      'Imaging reports', 'Discharge summaries', 'Lab results',
+      'Prescriptions', 'Referrals', 'Claim forms'];
+
+    const [GR, GG, GB] = CFG.GRID_COLOR;
+
+    // Build row descriptors
+    let gridRows = [];
+    function buildGrid() {
+      gridRows = [];
+      const numRows = Math.max(1, Math.floor(CFG.CONVEYOR_ROWS));
+      const rowStep = STEP;   // GRID_CELL + GRID_GAP
+      const startY = conveyorStackTop();
+      for (let r = 0; r < numRows; r++) {
+        // Random per-row scroll speed (constant for that row's lifetime)
+        const speed = CFG.GRID_ROW_SPEED_MIN +
+          Math.random() * (CFG.GRID_ROW_SPEED_MAX - CFG.GRID_ROW_SPEED_MIN);
+        const usePattern = CFG.GRID_DENSITY > 0;
+        const pattern = Array.from({ length: PCOLS }, () =>
+          usePattern && Math.random() < CFG.GRID_DENSITY);
+        // Per-column phase (for opacity pulsing)
+        const phases = Float32Array.from({ length: PCOLS }, () => Math.random() * Math.PI * 2);
+        let visCount = 0;
+        for (let c = 0; c < PCOLS; c++) if (pattern[c]) visCount++;
+        const patW = Math.max(STEP, visCount * STEP);
+        const chips = Array.from({ length: PCOLS }, (_, c) =>
+          pattern[c] ? randomChipLabel() : null);
+        gridRows.push({
+          y: startY + r * rowStep,
+          speed,
+          pattern, phases, chips,
+          visCount, patW,
+          offset: Math.random() * patW,
+          spawns: [],
+        });
+      }
+    }
+    buildGrid();
+
+    function scrollWrap(offset, pw) {
+      return ((offset % pw) + pw) % pw;
+    }
+
+    function conveyorLayout(bx) {
+      const maxX = bx - CFG.CONVEYOR_BARRIER_PAD - CELL;
+      const queueScreenW = bx * CFG.CONVEYOR_QUEUE_SCREEN_FRAC;
+      const queueStart = Math.max(0, maxX - queueScreenW);
+      const logicalQueueStart = Math.max(STEP, bx * (1 - CFG.CONVEYOR_QUEUE_LOGICAL_FRAC));
+      const logicalQueueEnd = bx;
+      return { maxX, queueStart, logicalQueueStart, logicalQueueEnd, queueScreenW };
+    }
+
+    function conveyorQueueEffective(logicalX, logicalQueueStart, logicalQueueEnd) {
+      if (logicalX < logicalQueueStart) return logicalX;
+      const span = logicalQueueEnd - logicalQueueStart;
+      const over = logicalX - logicalQueueStart;
+      return logicalQueueStart + Math.min(over * CFG.CONVEYOR_QUEUE_LOGICAL_DRAG, span);
+    }
+
+    // Raw logical can run ahead of screen when DRAG < 1; keep spawns until mapped position reaches barrier.
+    function conveyorSpawnRetainMax(bx) {
+      const { logicalQueueStart, logicalQueueEnd } = conveyorLayout(bx);
+      const span = logicalQueueEnd - logicalQueueStart;
+      const drag = Math.max(CFG.CONVEYOR_QUEUE_LOGICAL_DRAG, 1e-4);
+      const overToBarrier = span / drag;
+      return logicalQueueEnd + overToBarrier + STEP * 6;
+    }
+
+    function conveyorScreenX(logicalX, bx) {
+      const { maxX, queueStart, logicalQueueStart, logicalQueueEnd } = conveyorLayout(bx);
+      const eff = conveyorQueueEffective(logicalX, logicalQueueStart, logicalQueueEnd);
+      if (eff < 0) return eff * CFG.CONVEYOR_LEFT_FAST;
+
+      if (eff < logicalQueueStart) {
+        const t = eff / logicalQueueStart;
+        return queueStart * Math.pow(t, CFG.CONVEYOR_LEFT_EMPTY_POWER);
+      }
+
+      const span = logicalQueueEnd - logicalQueueStart;
+      const t = Math.min(1, (eff - logicalQueueStart) / span);
+      const stall = 1 - Math.pow(1 - t, CFG.CONVEYOR_QUEUE_APPROACH_POWER);
+      return queueStart + stall * (maxX - queueStart);
+    }
+
+    // Pack every square on a row: barrier → left, min STEP between centers (CELL+GAP).
+    function resolveOverlaps(items, maxX) {
+      if (!items.length) return items;
+      const sorted = [...items].sort((a, b) => b.logicalX - a.logicalX || a.x - b.x);
+      const out = [];
+      let slotX = maxX;
+      for (const it of sorted) {
+        const x = Math.min(it.x, slotX);
+        slotX = x - STEP;
+        if (x < -CELL - STEP) continue;
+        out.push({ ...it, x });
+      }
+      return out.sort((a, b) => a.x - b.x);
+    }
+
+    function trySpawnSquare(row, dt) {
+      if (CFG.CONVEYOR_SPAWN_RATE <= 0 || dt <= 0) return;
+      if (Math.random() >= 1 - Math.exp(-CFG.CONVEYOR_SPAWN_RATE * dt)) return;
+      row.spawns.push({
+        base: row.offset,
+        chip: randomChipLabel(),
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+
+    function collectConveyorSquare(row, logicalX, chip, phase, bx, gTop, gBot, maxSqX, rowSquares) {
+      const x = conveyorScreenX(logicalX, bx);
+      if (x < -CELL - STEP || x > maxSqX + STEP) return;
+      let op = CFG.GRID_OPACITY_BASE + CFG.GRID_OPACITY_AMP * Math.sin(phase);
+      op = Math.max(0.04, Math.min(0.94, op));
+      if (CFG.GRID_FADE_ZONE > 0) {
+        const dist = maxSqX - x;
+        if (dist < CFG.GRID_FADE_ZONE) op *= dist / CFG.GRID_FADE_ZONE;
+      }
+      if (row.y + CELL < gTop || row.y > gBot) return;
+      if (op < 0.03) return;
+      rowSquares.push({ x, y: row.y, op, logicalX, chip });
+    }
+
+    function drawGrid(dt) {
+      const bx = BX();
+      const gTop = GRID_TOP();
+      const gBot = GRID_BOT();
+      const repsFor = (pw) => Math.ceil(bx / pw) + 2;
+      const pendingLabels = [];
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, gTop, bx, gBot - gTop);
+      ctx.clip();
+
+      const layout = conveyorLayout(bx);
+      const maxSqX = layout.maxX;
+      const maxLblX = bx - CFG.CONVEYOR_LABEL_MARGIN;
+
+      for (const row of gridRows) {
+        if (row.y > gBot + STEP || row.y + CELL < gTop) continue;
+
+        const rowPatW = row.patW;
+        const reps = repsFor(rowPatW);
+        if (!row.spawns) row.spawns = [];
+        trySpawnSquare(row, dt);
+
+        row.offset += row.speed * CFG.CONVEYOR_SCROLL_MUL;
+        const scrollX = scrollWrap(row.offset, rowPatW);
+
+        if (CFG.GRID_DENSITY > 0) {
+          for (let c = 0; c < PCOLS; c++) {
+            if (!row.pattern[c]) continue;
+            row.phases[c] += CFG.GRID_PULSE_SPEED;
+          }
+        }
+
+        const rowSquares = [];
+
+        if (CFG.GRID_DENSITY > 0) {
+          for (let rep = -1; rep < reps; rep++) {
+            let visSlot = 0;
+            for (let c = 0; c < PCOLS; c++) {
+              if (!row.pattern[c]) continue;
+              const logicalX = rep * rowPatW + visSlot * STEP - scrollX;
+              visSlot++;
+              collectConveyorSquare(row, logicalX, row.chips[c], row.phases[c],
+                bx, gTop, gBot, maxSqX, rowSquares);
+            }
+          }
+        }
+
+        for (const sp of row.spawns) {
+          const logicalX = sp.base - row.offset;
+          collectConveyorSquare(row, logicalX, sp.chip, sp.phase,
+            bx, gTop, gBot, maxSqX, rowSquares);
+        }
+
+        const retainMax = conveyorSpawnRetainMax(bx);
+        row.spawns = row.spawns.filter(sp => {
+          const lx = sp.base - row.offset;
+          return lx > -STEP * 4 && lx < retainMax;
+        });
+
+        const placed = resolveOverlaps(rowSquares, maxSqX);
+        for (const sq of placed) {
+          ctx.fillStyle = `rgba(${GR},${GG},${GB},${sq.op.toFixed(2)})`;
+          ctx.fillRect(sq.x, sq.y, CELL, CELL);
+
+          const lblCx = sq.x + CELL * 0.5;
+          if (sq.chip && sq.op > 0.35 && lblCx < maxLblX) {
+            pendingLabels.push({
+              text: sq.chip,
+              cx: lblCx,
+              contentTopY: sq.y,
+              op: sq.op * 0.9,
+            });
+          }
+        }
+      }
+      ctx.restore();
+
+      for (const lbl of pendingLabels) {
+        if (lbl.cx >= maxLblX) continue;
+        drawLabelPill(lbl.text, lbl.cx, lbl.contentTopY, lbl.op, CFG.FONT_PILL_CHIP);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NETWORK GRAPH — adapted from network-graph.html
+    // ═══════════════════════════════════════════════════════════════════════════
+    const CYA = [0, 215, 255];
+
+    // Named hub nodes (super-hubs of the network)
+    const HUB_DEF = [
+      { name: 'Treatments', r: 30 },
+      { name: 'Conditions', r: 24 },
+      { name: 'Symptoms', r: 20 },
+      { name: 'Diagnostic criteria', r: 24 },
+      { name: 'Decision logic', r: 22 },
+      { name: 'ACOEM', r: 23 },
+      { name: 'SNOMED', r: 23 },
+      { name: 'ICD', r: 24 },
+      { name: 'CPT', r: 20 },
+      { name: 'Protocols', r: 18 },
+      { name: 'Pathology', r: 18 },
+      { name: 'Genetics', r: 19 },
+      { name: 'Risk Factors', r: 22 },
+      { name: 'Comorbidities', r: 20 },
+      { name: 'Outcomes', r: 22 },
+      { name: 'Biomarkers', r: 18 },
+      { name: 'Interventions', r: 18 },
+      { name: 'Active Ingredients', r: 20 },
+      { name: 'Drug Interactions', r: 20 },
+      { name: 'Contraindications', r: 20 },
+      { name: 'Mechanisms of Action', r: 22 },
+      { name: 'Adverse Events', r: 20 },
+      { name: 'Pharmacokinetics', r: 20 },
+      { name: 'LOINC', r: 20 },
+      { name: 'RxNorm', r: 20 },
+      { name: 'HL7 FHIR', r: 20 },
+      { name: 'MeSH', r: 20 },
+      { name: 'DRG', r: 20 },
+      { name: 'Phenotypes', r: 20 },
+      { name: 'Gene Expressions', r: 20 },
+      { name: 'Molecular Pathways', r: 22 },
+      { name: 'Metabolomics', r: 20 },
+      { name: 'Genomic Variants', r: 20 },
+      { name: 'Lab Results', r: 20 },
+      { name: 'Vital Signs', r: 20 },
+      { name: 'Care Pathways', r: 20 },
+      { name: 'Clinical Trials', r: 20 },
+      { name: 'Social Determinants', r: 22 },
+      { name: 'Immunizations', r: 20 },
+      { name: 'Care Protocols', r: 20 },
+      { name: 'Medical Devices', r: 20 },
+    ];
+
+    const nodes = [], edges = [];
+    let nid = 0, alphaSim = 1.0;
+
+    function mkNode(r, startR, hubName) {
+      const id = nid++;
+      const a = Math.random() * Math.PI * 2;
+      const d = (startR || 8) * Math.pow(Math.random(), 0.5);
+      nodes.push({
+        id, r,
+        x: NCX() + Math.cos(a) * d, y: NCY() + Math.sin(a) * d,
+        vx: (Math.random() - .5) * CFG.INIT_VEL,
+        vy: (Math.random() - .5) * CFG.INIT_VEL,
+        fx: 0, fy: 0,
+        phase: Math.random() * Math.PI * 2,
+        aOff: (Math.random() - .5) * CFG.NODE_A_SPREAD,
+        hubName: hubName || null, community: 0, pColor: null
+      });
+      return id;
+    }
+    function mkEdge(a, b) { edges.push([a, b, (Math.random() - .5) * CFG.EDGE_CURVE_F]); }
+    function rndOf(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+    // Named hub ring
+    const HUB_IDS = [];
+    HUB_DEF.forEach((hd, i) => {
+      const id = mkNode(hd.r, i === 0 ? 2 : 5, hd.name);
+      HUB_IDS.push(id);
+      if (i === 0) { nodes[id].x = NCX(); nodes[id].y = NCY(); }
+      else {
+        const a = (i - 1) / (HUB_DEF.length - 1) * Math.PI * 2;
+        nodes[id].x = NCX() + Math.cos(a) * (100 + Math.random() * 45);
+        nodes[id].y = NCY() + Math.sin(a) * (82 + Math.random() * 32);
+      }
+    });
+    for (let i = 1; i < HUB_IDS.length; i++) mkEdge(HUB_IDS[0], HUB_IDS[i]);
+    for (let i = 1; i < HUB_IDS.length - 1; i++) mkEdge(HUB_IDS[i], HUB_IDS[i + 1]);
+    mkEdge(HUB_IDS[HUB_IDS.length - 1], HUB_IDS[1]);
+    for (let i = 1; i < HUB_IDS.length; i++) {
+      if (Math.random() < 0.22) {
+        const j = 1 + Math.floor(Math.random() * (HUB_IDS.length - 1));
+        if (j !== i) mkEdge(HUB_IDS[i], HUB_IDS[j]);
+      }
+    }
+
+    // Primary hubs
+    const PH = [];
+    for (let i = 0; i < CFG.PH_COUNT; i++) {
+      const h = mkNode(CFG.PH_R_MIN + Math.random() * CFG.PH_R_RANGE, CFG.PH_START_R);
+      PH.push(h); mkEdge(h, rndOf(HUB_IDS));
+      if (Math.random() < CFG.PH_SH_E2) mkEdge(h, rndOf(HUB_IDS));
+      if (PH.length > 3 && Math.random() < CFG.PH_PH_E1) mkEdge(h, rndOf(PH));
+      if (PH.length > 8 && Math.random() < CFG.PH_PH_E2) mkEdge(h, rndOf(PH));
+    }
+    // Secondary
+    const SEC = [];
+    for (let i = 0; i < CFG.SEC_COUNT; i++) {
+      const s = mkNode(CFG.SEC_R_MIN + Math.random() * CFG.SEC_R_RANGE, CFG.SEC_START_R);
+      SEC.push(s); mkEdge(s, rndOf(PH));
+      if (SEC.length > 2 && Math.random() < CFG.SEC_E1) mkEdge(s, rndOf(SEC));
+      if (SEC.length > 6 && Math.random() < CFG.SEC_E2) mkEdge(s, rndOf(SEC));
+    }
+    // Leaves
+    const ML = [];
+    for (let i = 0; i < CFG.ML_COUNT; i++) {
+      const l = mkNode(CFG.ML_R_MIN + Math.random() * CFG.ML_R_RANGE, CFG.ML_START_R);
+      ML.push(l);
+      mkEdge(l, Math.random() < CFG.ML_SEC_P ? rndOf(SEC) : rndOf(PH));
+      if (ML.length > 4 && Math.random() < CFG.ML_ML_P) mkEdge(l, rndOf(ML));
+    }
+    // Peripheral clusters
+    const PCOL_LIST = [[80, 220, 255], [90, 210, 250], [70, 225, 255], [100, 215, 245], [60, 215, 255],
+    [110, 220, 250], [85, 210, 245], [120, 215, 255], [75, 225, 250], [95, 210, 255],
+    [65, 215, 250], [105, 220, 245]];
+    const outerPool = [...SEC.slice(-45), ...ML.slice(-65)];
+    for (let ci = 0; ci < CFG.PERI_COUNT; ci++) {
+      const pc = PCOL_LIST[ci];
+      const bAng = (ci / CFG.PERI_COUNT) * Math.PI * 2 + (Math.random() - .5) * .5;
+      const bR = 170 + Math.random() * 55;
+      const cSize = 5 + Math.floor(Math.random() * 12);
+      const cNds = [];
+      for (let k = 0; k < cSize; k++) {
+        const la = bAng + (Math.random() - .5) * .9, ld = bR + (Math.random() - .5) * 45;
+        const r = k === 0 ? 4 + Math.random() * 6 : 1.5 + Math.random() * 3.5;
+        const cn = mkNode(r, 0); nodes[cn].x = NCX() + Math.cos(la) * ld + (Math.random() - .5) * 22;
+        nodes[cn].y = NCY() + Math.sin(la) * ld + (Math.random() - .5) * 22;
+        nodes[cn].community = ci + 1; nodes[cn].pColor = pc; cNds.push(cn);
+      }
+      for (let k = 1; k < cNds.length; k++) {
+        mkEdge(cNds[0], cNds[k]);
+        if (k > 1 && Math.random() < .38) mkEdge(cNds[k - 1], cNds[k]);
+      }
+      const cLen = 2 + Math.floor(Math.random() * 3), cAng = bAng + (Math.random() - .5) * .15;
+      let prev = rndOf(outerPool);
+      for (let k = 0; k < cLen; k++) {
+        const prog = (k + 1) / (cLen + 1), cr = 115 + prog * (bR - 115);
+        const cn = mkNode(1.2 + Math.random() * 2.3, 0);
+        nodes[cn].x = NCX() + Math.cos(cAng) * cr + (Math.random() - .5) * 15;
+        nodes[cn].y = NCY() + Math.sin(cAng) * cr + (Math.random() - .5) * 15;
+        nodes[cn].community = ci + 1; nodes[cn].pColor = pc; mkEdge(prev, cn); prev = cn;
+      }
+      mkEdge(prev, cNds[0]);
+    }
+
+    // Sort small→large (large on top)
+    nodes.sort((a, b) => a.r - b.r);
+    const idxOf = new Array(nid);
+    nodes.forEach((nd, i) => { idxOf[nd.id] = i; });
+    for (let e = 0; e < edges.length; e++) { edges[e][0] = idxOf[edges[e][0]]; edges[e][1] = idxOf[edges[e][1]]; }
+
+    // ── Physics tick ──────────────────────────────────────────────────────────────
+    function netTick() {
+      const n = nodes.length, cx = NCX(), cy = NCY();
+      const a = Math.max(alphaSim, CFG.ALPHA_MIN);
+      for (let i = 0; i < n; i++) { nodes[i].fx = 0; nodes[i].fy = 0; }
+      // Gravity
+      for (let i = 0; i < n; i++) {
+        const nd = nodes[i];
+        const g = nd.community === 0 ? CFG.GRAVITY_MAIN * (CFG.GRAVITY_MAIN_BASE + nd.r * CFG.GRAVITY_MAIN_R) : CFG.GRAVITY_PERI;
+        nd.fx += (cx - nd.x) * g * a; nd.fy += (cy - nd.y) * g * a;
+      }
+      // Repulsion + collision
+      const rrs = CFG.REPULSION_RANGE * CFG.REPULSION_RANGE;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+          const dsq = dx * dx + dy * dy || .01;
+          const mn = nodes[i].r + nodes[j].r + CFG.COLLISION_GAP;
+          if (dsq < mn * mn) {
+            const d = Math.sqrt(dsq), ov = (mn - d) * CFG.COLLISION_RESP, nx = dx / d, ny = dy / d;
+            nodes[i].x += nx * ov; nodes[i].y += ny * ov; nodes[j].x -= nx * ov; nodes[j].y -= ny * ov;
+          }
+          if (dsq < rrs) {
+            const d = Math.sqrt(dsq), str = (nodes[i].r * nodes[j].r * CFG.REPULSION_R_MUL + CFG.REPULSION_BASE) * a;
+            const fx = dx / d * str / dsq, fy = dy / d * str / dsq;
+            nodes[i].fx += fx; nodes[i].fy += fy; nodes[j].fx -= fx; nodes[j].fy -= fy;
+          }
+        }
+      }
+      // Springs
+      for (const [ai, bi] of edges) {
+        const na = nodes[ai], nb = nodes[bi], dx = nb.x - na.x, dy = nb.y - na.y;
+        const d = Math.sqrt(dx * dx + dy * dy) || .01, rest = CFG.SPRING_REST_BASE + (na.r + nb.r) * CFG.SPRING_REST_R;
+        const f = (d - rest) * CFG.SPRING_K * a, fx = dx / d * f, fy = dy / d * f;
+        na.fx += fx; na.fy += fy; nb.fx -= fx; nb.fy -= fy;
+      }
+      for (let i = 0; i < n; i++) {
+        const nd = nodes[i];
+        nd.vx = (nd.vx + nd.fx) * CFG.DAMPING; nd.vy = (nd.vy + nd.fy) * CFG.DAMPING;
+        nd.x += nd.vx; nd.y += nd.vy;
+      }
+      alphaSim = Math.max(CFG.ALPHA_MIN, alphaSim - CFG.ALPHA_DECAY);
+    }
+
+    // ── Draw network (clipped to right of barrier) ─────────────────────────────
+    function drawNetwork(fade, at) {
+      if (fade <= 0) return;
+      ctx.save();
+      // Clip so network never crosses the barrier
+      ctx.beginPath();
+      ctx.rect(BX(), 0, W - BX(), H);
+      ctx.clip();
+      ctx.globalAlpha = fade;
+
+      // Edges
+      for (const [ai, bi, cv] of edges) {
+        const na = nodes[ai], nb = nodes[bi];
+        const isM = na.community === 0 && nb.community === 0;
+        const ea = isM ? CFG.EDGE_MAIN_ALPHA + Math.min(na.r, nb.r) * CFG.EDGE_MAIN_ALPHA_R
+          : CFG.EDGE_PERI_ALPHA + Math.min(na.r, nb.r) * CFG.EDGE_PERI_ALPHA_R;
+        const ec = (!isM && (na.pColor || nb.pColor)) ? na.pColor || nb.pColor : CYA;
+        ctx.strokeStyle = `rgba(${ec.join(',')},${ea})`;
+        ctx.lineWidth = isM ? CFG.EDGE_MAIN_W : CFG.EDGE_PERI_W;
+        const mx = (na.x + nb.x) * .5, my = (na.y + nb.y) * .5, dx = nb.x - na.x, dy = nb.y - na.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
+        ctx.beginPath(); ctx.moveTo(na.x, na.y);
+        ctx.quadraticCurveTo(mx - dy / len * cv * len, my + dx / len * cv * len, nb.x, nb.y);
+        ctx.stroke();
+      }
+      // Nodes
+      const settled = alphaSim < CFG.BREATHE_THRESH;
+      for (const nd of nodes) {
+        const c = nd.pColor || CYA;
+        const br = settled ? 1 + CFG.BREATHE_AMP * Math.sin(at * CFG.BREATHE_SPEED + nd.phase) : 1;
+        const r = nd.r * br;
+        if (r > CFG.NODE_GLOW_THRESH) {
+          const gr = r * CFG.NODE_GLOW_R;
+          const grd = ctx.createRadialGradient(nd.x, nd.y, r * CFG.NODE_GLOW_INNER, nd.x, nd.y, gr);
+          const gA = nd.community === 0 ? CFG.NODE_GLOW_A_MAIN : CFG.NODE_GLOW_A_PERI;
+          grd.addColorStop(0, `rgba(${c.join(',')},${gA})`);
+          grd.addColorStop(1, `rgba(${c.join(',')},0)`);
+          ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(nd.x, nd.y, gr, 0, Math.PI * 2); ctx.fill();
+        }
+        let bA = nd.community === 0 ? Math.min(CFG.NODE_A_BASE + nd.r * CFG.NODE_A_R, CFG.NODE_A_MAX) : CFG.NODE_A_PERI;
+        bA = Math.max(.1, Math.min(1, bA + nd.aOff));
+        ctx.fillStyle = `rgba(${c.join(',')},${bA})`;
+        ctx.beginPath(); ctx.arc(nd.x, nd.y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+
+      // Hub pills drawn outside clip (they float above nodes, may slightly overhang)
+      const labOp = Math.max(0, Math.min(1, (CFG.NET_FADE_START - alphaSim) / (CFG.NET_FADE_START - CFG.NET_FADE_END)));
+      for (const nd of nodes) {
+        if (!nd.hubName) continue;
+        if (nd.x < BX() + 10) continue;   // don't draw label left of barrier
+        const br = settled ? 1 + CFG.BREATHE_AMP * Math.sin(at * CFG.BREATHE_SPEED + nd.phase) : 1;
+        drawLabelPill(nd.hubName, nd.x, nd.y - nd.r * br, labOp * fade, CFG.FONT_PILL_HUB);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DATA STREAMS — barrier → network, more and brighter
+    // ═══════════════════════════════════════════════════════════════════════════
+    function randomStreamY() {
+      return GRID_TOP() + Math.random() * GRID_H();
+    }
+
+    function resetStream(s) {
+      s.y0 = randomStreamY();
+      s.tgt = nodes[Math.floor(Math.random() * nodes.length)];
+      s.spd = CFG.STREAM_SPEED_MIN + Math.random() * (CFG.STREAM_SPEED_MAX - CFG.STREAM_SPEED_MIN);
+      s.t = 0;
+    }
+
+    const sData = Array.from({ length: CFG.STREAM_COUNT }, () => ({
+      y0: randomStreamY(),
+      t: Math.random(),
+      spd: CFG.STREAM_SPEED_MIN + Math.random() * (CFG.STREAM_SPEED_MAX - CFG.STREAM_SPEED_MIN),
+      tgt: nodes[Math.floor(Math.random() * nodes.length)],
+    }));
+
+    function drawStreams(fade) {
+      if (fade < 0.05) return;
+      const bx = BX();
+      const [sr, sg, sb] = CYA;
+
+      for (const s of sData) {
+        s.t += s.spd;
+        if (s.t >= 1) resetStream(s);
+        const ex = s.tgt.x, ey = s.tgt.y;
+        const sx = bx, sy = s.y0;
+        const c1x = sx + (ex - sx) * 0.38, c1y = sy;
+        const c2x = sx + (ex - sx) * 0.65, c2y = ey;
+        const op = s.t < .07 ? s.t / .07 : s.t > .93 ? (1 - s.t) / .07 : 1;
+
+        // Path line
+        ctx.save();
+        ctx.globalAlpha = op * fade * CFG.STREAM_PATH_ALPHA;
+        ctx.strokeStyle = `rgba(${sr},${sg},${sb},1)`;
+        ctx.lineWidth = CFG.STREAM_PATH_WIDTH;
+        ctx.beginPath(); ctx.moveTo(sx, sy);
+        ctx.bezierCurveTo(c1x, c1y, c2x, c2y, ex, ey);
+        ctx.stroke();
+
+        // Glow circle around dot
+        const pt = bezPt(sx, sy, c1x, c1y, c2x, c2y, ex, ey, s.t);
+        ctx.globalAlpha = op * fade * CFG.STREAM_GLOW_ALPHA;
+        const grd = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, CFG.STREAM_GLOW_R);
+        grd.addColorStop(0, `rgba(${sr},${sg},${sb},1)`);
+        grd.addColorStop(1, `rgba(${sr},${sg},${sb},0)`);
+        ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(pt.x, pt.y, CFG.STREAM_GLOW_R, 0, Math.PI * 2); ctx.fill();
+
+        // Moving dot
+        ctx.globalAlpha = op * fade * CFG.STREAM_DOT_ALPHA;
+        ctx.fillStyle = `rgba(${sr},${sg},${sb},1)`;
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, CFG.STREAM_DOT_R, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BARRIER — sharp line, no glow effect
+    // ═══════════════════════════════════════════════════════════════════════════
+    function drawBarrier() {
+      const bx = BX();
+      const y0 = GRID_TOP();
+      const y1 = GRID_BOT();
+      const [br, bg, bb] = CFG.BARRIER_COLOR;
+      ctx.strokeStyle = `rgb(${br},${bg},${bb})`;
+      ctx.lineWidth = CFG.BARRIER_LINE_W;
+      ctx.beginPath(); ctx.moveTo(bx, y0); ctx.lineTo(bx, y1); ctx.stroke();
+      drawSectionLabel(CFG.CONVEYOR_ZONE_LABEL, 0);
+      drawSectionLabel(CFG.BARRIER_LABEL, bx);
+      drawSectionLabelRight(CFG.KG_ZONE_LABEL, W);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ANIMATION LOOP
+    // ═══════════════════════════════════════════════════════════════════════════
+    let animTime = 0, lastT = performance.now();
+
+    function loop(now) {
+      requestAnimationFrame(loop);
+      const dt = Math.min((now - lastT) / 1000, 0.05);
+      lastT = now; animTime += dt;
+
+      // Multi-tick physics while hot
+      const ticks = alphaSim > .65 ? 6 : alphaSim > .35 ? 4 : alphaSim > .12 ? 2 : 1;
+      for (let t = 0; t < ticks; t++) netTick();
+
+      // Clear + background
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = DOT_PAT; ctx.fillRect(0, 0, W, H);
+
+      // Network fade value (0 = not yet visible, 1 = fully visible)
+      const fade = Math.max(0, Math.min(1,
+        (CFG.NET_FADE_START - alphaSim) / (CFG.NET_FADE_START - CFG.NET_FADE_END)));
+
+      drawNetwork(fade, animTime);
+      drawStreams(fade);
+      drawBarrier();
+      drawGrid(dt);
+    }
+
+    requestAnimationFrame(loop);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // RESIZE
+    // ═══════════════════════════════════════════════════════════════════════════
+    window.addEventListener('resize', () => {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      buildGrid();
+      sData.forEach(s => { s.y0 = randomStreamY(); });
+    });
+  </script>
+</body>
+
+</html>
