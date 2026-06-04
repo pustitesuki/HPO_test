@@ -84,19 +84,15 @@
       GRID_DENSITY: 0,    // repeating belt (0 = off). Use with CONVEYOR_SPAWN_RATE or alone
       GRID_PATTERN_COLS: 72,    // pattern repeats every N columns (only if GRID_DENSITY > 0)
       GRID_CHIP_PROB: 0.3,  // 0–1: share of squares that get a chip label
-      // Conveyor: fast left → stall before barrier → even queue (STEP)
-      CONVEYOR_QUEUE_SCREEN_FRAC: 0.34, // screen band for queue + overlap resolve
-      CONVEYOR_QUEUE_LOGICAL_FRAC: 0.34,// logical span reference for queue zone
-      CONVEYOR_QUEUE_LOGICAL_DRAG: 0.02, // 0.02–0.2: lower = longer queue (spawns kept until screen reaches barrier)
-      CONVEYOR_QUEUE_APPROACH_POWER: 2, // 1–8 only (shape); huge values snap all squares to barrier
-      CONVEYOR_LEFT_EMPTY_POWER: 3.5,   // >1 = mostly empty left before queue zone
+      // Conveyor: 1:1 scroll to barrier, dense stack via resolveOverlaps (STEP)
       CONVEYOR_LEFT_FAST: 2.5,          // x<0: fast entry from left edge
-      CONVEYOR_SCROLL_MUL: 5.0,         // belt always fast; stall is visual (mapping)
+      CONVEYOR_SCROLL_MUL: 5.0,         // logical scroll multiplier
+      CONVEYOR_QUEUE_HOLD_SEC: 10.4,     // dwell at barrier before despawn (builds queue)
       CONVEYOR_BARRIER_PAD: 6,         // min px from barrier line to square edge
       CONVEYOR_LABEL_MARGIN: 24,       // no chip labels closer than this to barrier
-      GRID_ROW_SPEED_MIN: -0.5,        // base logical px/frame per row
-      GRID_ROW_SPEED_MAX: -2.5,
-      CONVEYOR_SPAWN_RATE: 0.5,         // new squares/sec per row (dynamic spawn). 0 = no spawn
+      GRID_ROW_SPEED_MIN: -1.5,        // base logical px/frame per row (negative = toward barrier)
+      GRID_ROW_SPEED_MAX: -3.5,
+      CONVEYOR_SPAWN_RATE: 0.9,         // new squares/sec per row (dynamic spawn). 0 = no spawn
       //   Opacity: base ± pulse amplitude (clamped 0.04–0.94)
       GRID_OPACITY_BASE: 0.75,
       GRID_OPACITY_AMP: 0.52,
@@ -162,6 +158,8 @@
       BREATHE_THRESH: 0.48,
       NET_FADE_START: 0.70,  // alpha_sim at which network starts fading in
       NET_FADE_END: 0.45,  // alpha_sim at which network is fully visible
+      KG_BUILD_DELAY_SEC: 2.8, // wait before graph + streams appear (conveyor first)
+      KG_BUILD_RAMP_SEC: 2.2,  // fade-in length after delay
 
       // ── Network node counts ───────────────────────────────────────────────────
       SH_COUNT: 16, SH_R_MIN: 22, SH_R_RANGE: 11, SH_START_R: 4,
@@ -344,51 +342,24 @@
       return ((offset % pw) + pw) % pw;
     }
 
-    function conveyorLayout(bx) {
-      const maxX = bx - CFG.CONVEYOR_BARRIER_PAD - CELL;
-      const queueScreenW = bx * CFG.CONVEYOR_QUEUE_SCREEN_FRAC;
-      const queueStart = Math.max(0, maxX - queueScreenW);
-      const logicalQueueStart = Math.max(STEP, bx * (1 - CFG.CONVEYOR_QUEUE_LOGICAL_FRAC));
-      const logicalQueueEnd = bx;
-      return { maxX, queueStart, logicalQueueStart, logicalQueueEnd, queueScreenW };
+    function conveyorMaxX(bx) {
+      return bx - CFG.CONVEYOR_BARRIER_PAD - CELL;
     }
 
-    function conveyorQueueEffective(logicalX, logicalQueueStart, logicalQueueEnd) {
-      if (logicalX < logicalQueueStart) return logicalX;
-      const span = logicalQueueEnd - logicalQueueStart;
-      const over = logicalX - logicalQueueStart;
-      return logicalQueueStart + Math.min(over * CFG.CONVEYOR_QUEUE_LOGICAL_DRAG, span);
-    }
-
-    // Raw logical can run ahead of screen when DRAG < 1; keep spawns until mapped position reaches barrier.
-    function conveyorSpawnRetainMax(bx) {
-      const { logicalQueueStart, logicalQueueEnd } = conveyorLayout(bx);
-      const span = logicalQueueEnd - logicalQueueStart;
-      const drag = Math.max(CFG.CONVEYOR_QUEUE_LOGICAL_DRAG, 1e-4);
-      const overToBarrier = span / drag;
-      return logicalQueueEnd + overToBarrier + STEP * 6;
-    }
-
+    // Linear belt: logical px ≈ screen px until barrier; queue density = resolveOverlaps.
     function conveyorScreenX(logicalX, bx) {
-      const { maxX, queueStart, logicalQueueStart, logicalQueueEnd } = conveyorLayout(bx);
-      const eff = conveyorQueueEffective(logicalX, logicalQueueStart, logicalQueueEnd);
-      if (eff < 0) return eff * CFG.CONVEYOR_LEFT_FAST;
-
-      if (eff < logicalQueueStart) {
-        const t = eff / logicalQueueStart;
-        return queueStart * Math.pow(t, CFG.CONVEYOR_LEFT_EMPTY_POWER);
-      }
-
-      const span = logicalQueueEnd - logicalQueueStart;
-      const t = Math.min(1, (eff - logicalQueueStart) / span);
-      const stall = 1 - Math.pow(1 - t, CFG.CONVEYOR_QUEUE_APPROACH_POWER);
-      return queueStart + stall * (maxX - queueStart);
+      const maxX = conveyorMaxX(bx);
+      if (logicalX < 0) return logicalX * CFG.CONVEYOR_LEFT_FAST;
+      if (logicalX >= bx) return maxX;
+      return (logicalX / bx) * maxX;
     }
 
-    // Pack every square on a row: barrier → left, min STEP between centers (CELL+GAP).
+    // Pack row: queued (oldest at barrier) then in-flight; min STEP between centers.
     function resolveOverlaps(items, maxX) {
       if (!items.length) return items;
-      const sorted = [...items].sort((a, b) => b.logicalX - a.logicalX || a.x - b.x);
+      const held = items.filter(it => it.holdAt != null).sort((a, b) => a.holdAt - b.holdAt);
+      const flying = items.filter(it => it.holdAt == null).sort((a, b) => b.logicalX - a.logicalX || a.x - b.x);
+      const sorted = held.concat(flying);
       const out = [];
       let slotX = maxX;
       for (const it of sorted) {
@@ -410,7 +381,7 @@
       });
     }
 
-    function collectConveyorSquare(row, logicalX, chip, phase, bx, gTop, gBot, maxSqX, rowSquares) {
+    function collectConveyorSquare(row, logicalX, chip, phase, bx, gTop, gBot, maxSqX, rowSquares, holdAt) {
       const x = conveyorScreenX(logicalX, bx);
       if (x < -CELL - STEP || x > maxSqX + STEP) return;
       let op = CFG.GRID_OPACITY_BASE + CFG.GRID_OPACITY_AMP * Math.sin(phase);
@@ -421,7 +392,7 @@
       }
       if (row.y + CELL < gTop || row.y > gBot) return;
       if (op < 0.03) return;
-      rowSquares.push({ x, y: row.y, op, logicalX, chip });
+      rowSquares.push({ x, y: row.y, op, logicalX, chip, holdAt: holdAt ?? null });
     }
 
     function drawGrid(dt) {
@@ -436,8 +407,7 @@
       ctx.rect(0, gTop, bx, gBot - gTop);
       ctx.clip();
 
-      const layout = conveyorLayout(bx);
-      const maxSqX = layout.maxX;
+      const maxSqX = conveyorMaxX(bx);
       const maxLblX = bx - CFG.CONVEYOR_LABEL_MARGIN;
 
       for (const row of gridRows) {
@@ -475,14 +445,17 @@
 
         for (const sp of row.spawns) {
           const logicalX = sp.base - row.offset;
+          if (logicalX >= bx && sp.holdAt == null) sp.holdAt = animTime;
           collectConveyorSquare(row, logicalX, sp.chip, sp.phase,
-            bx, gTop, gBot, maxSqX, rowSquares);
+            bx, gTop, gBot, maxSqX, rowSquares, sp.holdAt);
         }
 
-        const retainMax = conveyorSpawnRetainMax(bx);
         row.spawns = row.spawns.filter(sp => {
           const lx = sp.base - row.offset;
-          return lx > -STEP * 4 && lx < retainMax;
+          if (sp.holdAt != null) {
+            return animTime - sp.holdAt < CFG.CONVEYOR_QUEUE_HOLD_SEC;
+          }
+          return lx > -STEP * 4 && lx < bx;
         });
 
         const placed = resolveOverlaps(rowSquares, maxSqX);
@@ -853,17 +826,24 @@
       const dt = Math.min((now - lastT) / 1000, 0.05);
       lastT = now; animTime += dt;
 
-      // Multi-tick physics while hot
-      const ticks = alphaSim > .65 ? 6 : alphaSim > .35 ? 4 : alphaSim > .12 ? 2 : 1;
-      for (let t = 0; t < ticks; t++) netTick();
+      const kgReady = animTime >= CFG.KG_BUILD_DELAY_SEC;
+      if (kgReady) {
+        const ticks = alphaSim > .65 ? 6 : alphaSim > .35 ? 4 : alphaSim > .12 ? 2 : 1;
+        for (let t = 0; t < ticks; t++) netTick();
+      } else {
+        alphaSim = 1.0;
+      }
 
       // Clear + background
       ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = DOT_PAT; ctx.fillRect(0, 0, W, H);
 
-      // Network fade value (0 = not yet visible, 1 = fully visible)
-      const fade = Math.max(0, Math.min(1,
+      const simFade = Math.max(0, Math.min(1,
         (CFG.NET_FADE_START - alphaSim) / (CFG.NET_FADE_START - CFG.NET_FADE_END)));
+      const timeFade = kgReady
+        ? Math.min(1, (animTime - CFG.KG_BUILD_DELAY_SEC) / CFG.KG_BUILD_RAMP_SEC)
+        : 0;
+      const fade = simFade * timeFade;
 
       drawNetwork(fade, animTime);
       drawStreams(fade);
