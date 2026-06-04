@@ -25,6 +25,36 @@
 
     canvas {
       display: block;
+      position: relative;
+      z-index: 1;
+    }
+
+    .barrier-panel {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9;
+      border: 1px solid #00D4FF;
+      box-shadow: 0 20px 30px rgba(0, 0, 0, 0.25);
+      overflow: hidden;
+      background: linear-gradient(177deg,
+          rgba(81, 221, 247, 0.42) 29.73%,
+          rgba(255, 255, 255, 0.52) 111.04%);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+
+    .barrier-panel__label {
+      position: absolute;
+      right: 18px;
+      bottom: 22px;
+      color: #000;
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 32px;
+      font-weight: 300;
+      line-height: normal;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      transform-origin: center;
     }
 
     .hint {
@@ -42,6 +72,9 @@
 
 <body>
   <canvas id="c"></canvas>
+  <div id="barrier-panel" class="barrier-panel">
+    <span class="barrier-panel__label">Knowledge extraction</span>
+  </div>
   <div class="hint">CLINICAL KNOWLEDGE GRAPH</div>
   <script>
     'use strict';
@@ -53,11 +86,14 @@
 
       // ── Typography (all labels) — requires Space Grotesk <link> in <head> ───────
       FONT_FAMILY: 'Space Grotesk',
-      FONT_PILL_CHIP: '300 12px "Space Grotesk", sans-serif',
-      FONT_PILL_HUB: '300 12px "Space Grotesk", sans-serif',
-      FONT_BARRIER: '300 13px "Space Grotesk", sans-serif',
+      FONT_PILL_CHIP: '200 12px "Space Grotesk", sans-serif',
+      FONT_KG_LABEL: '200 12px "Space Grotesk", sans-serif', // all labels on knowledge graph (Light)
+      FONT_BARRIER: '200 13px "Space Grotesk", sans-serif',
+      FONT_ZONE_TITLE: '200 32px "Space Grotesk", sans-serif', // Unstructured data / Knowledge graph
+      ZONE_TITLE_COLOR: '#00C2E7',
+      ZONE_TITLE_GAP: 14,         // px above conveyor band top
       FONT_HINT: '12px',
-      SECTION_LABEL_INSET: 8,   // px from zone left edge (same as barrier label)
+      SECTION_LABEL_INSET: 24,    // px from zone left/right edge
       CONVEYOR_ZONE_LABEL: 'Unstructured data',
       KG_ZONE_LABEL: 'Knowledge graph',
 
@@ -87,7 +123,7 @@
       // Conveyor: 1:1 scroll to barrier, dense stack via resolveOverlaps (STEP)
       CONVEYOR_LEFT_FAST: 2.5,          // x<0: fast entry from left edge
       CONVEYOR_SCROLL_MUL: 5.0,         // logical scroll multiplier
-      CONVEYOR_QUEUE_HOLD_SEC: 10.4,     // dwell at barrier before despawn (builds queue)
+      CONVEYOR_QUEUE_HOLD_SEC: 7.4,     // dwell at barrier before despawn (builds queue)
       CONVEYOR_BARRIER_PAD: 6,         // min px from barrier line to square edge
       CONVEYOR_LABEL_MARGIN: 24,       // no chip labels closer than this to barrier
       GRID_ROW_SPEED_MIN: -1.5,        // base logical px/frame per row (negative = toward barrier)
@@ -101,7 +137,7 @@
       GRID_COLOR: [0, 215, 255], // [r,g,b] of the squares
 
       // ── Data Streams (brrier → network) ─────────────────────────────────────
-      STREAM_COUNT: 96,    // number of animated lines
+      STREAM_COUNT: 66,    // number of animated lines
       STREAM_PATH_ALPHA: 0.52,  // static path line opacity
       STREAM_PATH_WIDTH: 0.65,  // path line width
       STREAM_DOT_R: 2.6,   // moving dot radius
@@ -111,15 +147,30 @@
       STREAM_SPEED_MIN: 0.0030,// min t-increment per frame
       STREAM_SPEED_MAX: 0.0072,// max t-increment per frame
 
-      // ── Barrier line ──────────────────────────────────────────────────────────
-      BARRIER_LINE_W: 3,   // px
-      BARRIER_COLOR: [0, 0, 0],
-      BARRIER_LABEL: 'Knowledge Extraction',
-      BARRIER_LABEL_OP: 0.85,
+      // ── Barrier (rounded rect, centered on BARRIER_X_FRAC) ───────────────────
+      BARRIER_RECT_W: 126,
+      BARRIER_RECT_RADIUS: 16,
+      BARRIER_BORDER: '#4AE0FF',
+      BARRIER_GRAD_ANGLE: 177,       // CSS deg
+      BARRIER_GRAD_C1: '#51DDF7',
+      BARRIER_GRAD_C2: '#FFFFFF',
+      BARRIER_GRAD_STOP: 0.2973,
+      BARRIER_BG_OPACITY: 0.2,       // glass fill strength (HTML panel)
+      BARRIER_BACKDROP_BLUR: 8,      // px — backdrop-filter blur
+      BARRIER_SHADOW_BLUR: 30,
+      BARRIER_SHADOW_Y: 20,
+      BARRIER_SHADOW_OP: 0.25,
+      BARRIER_LABEL: 'Knowledge extraction',
+      FONT_BARRIER_RECT: '300 32px "Space Grotesk", sans-serif',
+      BARRIER_LABEL_INSET_X: 18,  // px from rect right edge
+      BARRIER_LABEL_INSET_Y: 22,  // px from rect bottom edge
+      BARRIER_LABEL_OP: 1,
+      BARRIER_Z_INDEX: 9,           // draw order: panel above conveyor (see Z_LAYER)
 
       // ── Network physics ───────────────────────────────────────────────────────
       ALPHA_DECAY: 0.0018,
       ALPHA_MIN: 0.008,
+      PHYSICS_SETTLED_EPS: 0.015, // stop netTick when alphaSim below this
       INIT_VEL: 1.5,
       GRAVITY_MAIN: 0.005,
       GRAVITY_MAIN_BASE: 0.60,
@@ -163,11 +214,11 @@
 
       // ── Network node counts ───────────────────────────────────────────────────
       SH_COUNT: 16, SH_R_MIN: 22, SH_R_RANGE: 11, SH_START_R: 4,
-      PH_COUNT: 300, PH_R_MIN: 5, PH_R_RANGE: 9, PH_START_R: 32,
+      PH_COUNT: 200, PH_R_MIN: 5, PH_R_RANGE: 9, PH_START_R: 32,
       PH_SH_E2: 0.50, PH_PH_E1: 0.55, PH_PH_E2: 0.28,
-      SEC_COUNT: 650, SEC_R_MIN: 3.5, SEC_R_RANGE: 5.5, SEC_START_R: 88,
+      SEC_COUNT: 450, SEC_R_MIN: 3.5, SEC_R_RANGE: 5.5, SEC_START_R: 88,
       SEC_E1: 0.45, SEC_E2: 0.15,
-      ML_COUNT: 240, ML_R_MIN: 1.0, ML_R_RANGE: 3.2, ML_START_R: 110,
+      ML_COUNT: 140, ML_R_MIN: 1.0, ML_R_RANGE: 3.2, ML_START_R: 110,
       ML_SEC_P: 0.72, ML_ML_P: 0.22,
       PERI_COUNT: 12,
     };
@@ -178,9 +229,47 @@
     let W = window.innerWidth, H = window.innerHeight;
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d');
+    const barrierPanelEl = document.getElementById('barrier-panel');
+    const barrierLabelEl = barrierPanelEl.querySelector('.barrier-panel__label');
     canvas.width = W; canvas.height = H;
 
-    const BX      = () => W * CFG.BARRIER_X_FRAC;
+    const BX = () => W * CFG.BARRIER_X_FRAC;
+    const barrierLeft = (bx) => bx - CFG.BARRIER_RECT_W * 0.5;
+    const barrierRight = (bx) => bx + CFG.BARRIER_RECT_W * 0.5;
+
+    // Per-frame layout cache (avoid repeated W/H math in hot paths)
+    const frame = {
+      bx: 0, barrierRight: 0, barrierLeft: 0, maxSqX: 0, invBx: 1,
+      ncx: 0, ncy: 0, gTop: 0, gBot: 0, maxLblX: 0,
+    };
+    function beginFrame() {
+      const bx = W * CFG.BARRIER_X_FRAC;
+      const gTop = (H - H * CFG.CONVEYOR_HEIGHT_FRAC) * 0.5;
+      const gBot = gTop + H * CFG.CONVEYOR_HEIGHT_FRAC;
+      frame.bx = bx;
+      frame.barrierRight = bx + CFG.BARRIER_RECT_W * 0.5;
+      frame.barrierLeft = bx - CFG.BARRIER_RECT_W * 0.5;
+      frame.maxSqX = frame.barrierLeft - CFG.CONVEYOR_BARRIER_PAD - CELL;
+      frame.maxX = frame.maxSqX;
+      frame.invBx = 1 / bx;
+      frame.bxToMaxX = frame.maxSqX * frame.invBx;
+      frame.ncx = W * CFG.NET_CX_FRAC;
+      frame.ncy = H * CFG.NET_CY_FRAC;
+      frame.gTop = gTop;
+      frame.gBot = gBot;
+      frame.maxLblX = bx - CFG.CONVEYOR_LABEL_MARGIN;
+    }
+
+    const Z_LAYER = {
+      BG: 0,
+      NETWORK: 1,
+      STREAMS: 2,
+      CONVEYOR: 3,
+      BARRIER: CFG.BARRIER_Z_INDEX,
+      ZONE_TITLES: 10,
+    };
+
+    const physBuckets = new Map();
     const NCX     = () => W * CFG.NET_CX_FRAC;
     const NCY     = () => H * CFG.NET_CY_FRAC;
     const GRID_H  = () => H * CFG.CONVEYOR_HEIGHT_FRAC;
@@ -194,27 +283,28 @@
       return GRID_TOP() + (GRID_H() - blockH) * 0.5;
     }
 
-    // Same style/placement as AI EXTRACTION LAYER (left pill above band top)
+    function drawZoneTitle(text, zoneEdgeX, align) {
+      ctx.save();
+      ctx.font = CFG.FONT_ZONE_TITLE;
+      ctx.fillStyle = CFG.ZONE_TITLE_COLOR;
+      ctx.textBaseline = 'bottom';
+      const y = GRID_TOP() - CFG.ZONE_TITLE_GAP;
+      if (align === 'right') {
+        ctx.textAlign = 'right';
+        ctx.fillText(text, zoneEdgeX - CFG.SECTION_LABEL_INSET, y);
+      } else {
+        ctx.textAlign = 'left';
+        ctx.fillText(text, zoneEdgeX + CFG.SECTION_LABEL_INSET, y);
+      }
+      ctx.restore();
+    }
+
     function drawSectionLabel(text, zoneLeftX) {
-      drawLabelPill(
-        text,
-        zoneLeftX + CFG.SECTION_LABEL_INSET,
-        GRID_TOP(),
-        CFG.BARRIER_LABEL_OP,
-        CFG.FONT_BARRIER,
-        'left'
-      );
+      drawZoneTitle(text, zoneLeftX, 'left');
     }
 
     function drawSectionLabelRight(text, zoneRightX) {
-      drawLabelPill(
-        text,
-        zoneRightX - CFG.SECTION_LABEL_INSET,
-        GRID_TOP(),
-        CFG.BARRIER_LABEL_OP,
-        CFG.FONT_BARRIER,
-        'right'
-      );
+      drawZoneTitle(text, zoneRightX, 'right');
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -342,33 +432,78 @@
       return ((offset % pw) + pw) % pw;
     }
 
-    function conveyorMaxX(bx) {
-      return bx - CFG.CONVEYOR_BARRIER_PAD - CELL;
+    // Linear belt: logical px ≈ screen px until barrier; queue density = resolveOverlaps.
+    function conveyorScreenX(logicalX) {
+      if (logicalX < 0) return logicalX * CFG.CONVEYOR_LEFT_FAST;
+      if (logicalX >= frame.bx) return frame.maxSqX;
+      return logicalX * frame.bxToMaxX;
     }
 
-    // Linear belt: logical px ≈ screen px until barrier; queue density = resolveOverlaps.
-    function conveyorScreenX(logicalX, bx) {
-      const maxX = conveyorMaxX(bx);
-      if (logicalX < 0) return logicalX * CFG.CONVEYOR_LEFT_FAST;
-      if (logicalX >= bx) return maxX;
-      return (logicalX / bx) * maxX;
-    }
+    const overlapHeldBuf = [];
+    const overlapFlyBuf = [];
+    const overlapOutBuf = [];
 
     // Pack row: queued (oldest at barrier) then in-flight; min STEP between centers.
     function resolveOverlaps(items, maxX) {
-      if (!items.length) return items;
-      const held = items.filter(it => it.holdAt != null).sort((a, b) => a.holdAt - b.holdAt);
-      const flying = items.filter(it => it.holdAt == null).sort((a, b) => b.logicalX - a.logicalX || a.x - b.x);
-      const sorted = held.concat(flying);
-      const out = [];
-      let slotX = maxX;
-      for (const it of sorted) {
-        const x = Math.min(it.x, slotX);
-        slotX = x - STEP;
-        if (x < -CELL - STEP) continue;
-        out.push({ ...it, x });
+      const n = items.length;
+      if (!n) return items;
+      overlapHeldBuf.length = 0;
+      overlapFlyBuf.length = 0;
+      for (let i = 0; i < n; i++) {
+        const it = items[i];
+        if (it.holdAt != null) overlapHeldBuf.push(it);
+        else overlapFlyBuf.push(it);
       }
-      return out.sort((a, b) => a.x - b.x);
+      overlapHeldBuf.sort((a, b) => a.holdAt - b.holdAt);
+      overlapFlyBuf.sort((a, b) => b.logicalX - a.logicalX || a.x - b.x);
+      overlapOutBuf.length = 0;
+      let slotX = maxX;
+      const pack = (list) => {
+        for (let i = 0, len = list.length; i < len; i++) {
+          const it = list[i];
+          const x = Math.min(it.x, slotX);
+          slotX = x - STEP;
+          if (x < -CELL - STEP) continue;
+          it.x = x;
+          overlapOutBuf.push(it);
+        }
+      };
+      pack(overlapHeldBuf);
+      pack(overlapFlyBuf);
+      overlapOutBuf.sort((a, b) => a.x - b.x);
+      return overlapOutBuf;
+    }
+
+    const sqOpStyles = new Map();
+    function fillStyleForOp(op) {
+      const key = (op * 100 + 0.5) | 0;
+      let s = sqOpStyles.get(key);
+      if (!s) {
+        s = `rgba(${GR},${GG},${GB},${(key / 100).toFixed(2)})`;
+        sqOpStyles.set(key, s);
+      }
+      return s;
+    }
+
+    const rowSquaresBuf = [];
+    const sqBatchByOp = new Map();
+
+    function drawSquareBatches(squares) {
+      sqBatchByOp.clear();
+      for (let i = 0; i < squares.length; i++) {
+        const sq = squares[i];
+        const key = (sq.op * 100 + 0.5) | 0;
+        let batch = sqBatchByOp.get(key);
+        if (!batch) { batch = []; sqBatchByOp.set(key, batch); }
+        batch.push(sq);
+      }
+      for (const [key, batch] of sqBatchByOp) {
+        ctx.fillStyle = fillStyleForOp(key / 100);
+        for (let i = 0; i < batch.length; i++) {
+          const sq = batch[i];
+          ctx.fillRect(sq.x, sq.y, CELL, CELL);
+        }
+      }
     }
 
     function trySpawnSquare(row, dt) {
@@ -381,24 +516,27 @@
       });
     }
 
-    function collectConveyorSquare(row, logicalX, chip, phase, bx, gTop, gBot, maxSqX, rowSquares, holdAt) {
-      const x = conveyorScreenX(logicalX, bx);
-      if (x < -CELL - STEP || x > maxSqX + STEP) return;
-      let op = CFG.GRID_OPACITY_BASE + CFG.GRID_OPACITY_AMP * Math.sin(phase);
-      op = Math.max(0.04, Math.min(0.94, op));
+    const gridPulseOn = CFG.GRID_PULSE_SPEED !== 0;
+
+    function collectConveyorSquare(row, logicalX, chip, phase, rowSquares, holdAt) {
+      const x = conveyorScreenX(logicalX);
+      if (x < -CELL - STEP || x > frame.maxSqX + STEP) return;
+      let op = gridPulseOn
+        ? Math.max(0.04, Math.min(0.94, CFG.GRID_OPACITY_BASE + CFG.GRID_OPACITY_AMP * Math.sin(phase)))
+        : CFG.GRID_OPACITY_BASE;
       if (CFG.GRID_FADE_ZONE > 0) {
-        const dist = maxSqX - x;
+        const dist = frame.maxSqX - x;
         if (dist < CFG.GRID_FADE_ZONE) op *= dist / CFG.GRID_FADE_ZONE;
       }
-      if (row.y + CELL < gTop || row.y > gBot) return;
+      if (row.y + CELL < frame.gTop || row.y > frame.gBot) return;
       if (op < 0.03) return;
       rowSquares.push({ x, y: row.y, op, logicalX, chip, holdAt: holdAt ?? null });
     }
 
     function drawGrid(dt) {
-      const bx = BX();
-      const gTop = GRID_TOP();
-      const gBot = GRID_BOT();
+      const bx = frame.bx;
+      const gTop = frame.gTop;
+      const gBot = frame.gBot;
       const repsFor = (pw) => Math.ceil(bx / pw) + 2;
       const pendingLabels = [];
 
@@ -407,8 +545,8 @@
       ctx.rect(0, gTop, bx, gBot - gTop);
       ctx.clip();
 
-      const maxSqX = conveyorMaxX(bx);
-      const maxLblX = bx - CFG.CONVEYOR_LABEL_MARGIN;
+      const maxSqX = frame.maxSqX;
+      const maxLblX = frame.maxLblX;
 
       for (const row of gridRows) {
         if (row.y > gBot + STEP || row.y + CELL < gTop) continue;
@@ -428,7 +566,7 @@
           }
         }
 
-        const rowSquares = [];
+        rowSquaresBuf.length = 0;
 
         if (CFG.GRID_DENSITY > 0) {
           for (let rep = -1; rep < reps; rep++) {
@@ -437,32 +575,34 @@
               if (!row.pattern[c]) continue;
               const logicalX = rep * rowPatW + visSlot * STEP - scrollX;
               visSlot++;
-              collectConveyorSquare(row, logicalX, row.chips[c], row.phases[c],
-                bx, gTop, gBot, maxSqX, rowSquares);
+              collectConveyorSquare(row, logicalX, row.chips[c], row.phases[c], rowSquaresBuf);
             }
           }
         }
 
-        for (const sp of row.spawns) {
+        const spawns = row.spawns;
+        for (let si = 0; si < spawns.length; si++) {
+          const sp = spawns[si];
           const logicalX = sp.base - row.offset;
           if (logicalX >= bx && sp.holdAt == null) sp.holdAt = animTime;
-          collectConveyorSquare(row, logicalX, sp.chip, sp.phase,
-            bx, gTop, gBot, maxSqX, rowSquares, sp.holdAt);
+          collectConveyorSquare(row, logicalX, sp.chip, sp.phase, rowSquaresBuf, sp.holdAt);
         }
 
-        row.spawns = row.spawns.filter(sp => {
+        let w = 0;
+        for (let si = 0; si < spawns.length; si++) {
+          const sp = spawns[si];
           const lx = sp.base - row.offset;
-          if (sp.holdAt != null) {
-            return animTime - sp.holdAt < CFG.CONVEYOR_QUEUE_HOLD_SEC;
-          }
-          return lx > -STEP * 4 && lx < bx;
-        });
+          const keep = sp.holdAt != null
+            ? animTime - sp.holdAt < CFG.CONVEYOR_QUEUE_HOLD_SEC
+            : lx > -STEP * 4 && lx < bx;
+          if (keep) spawns[w++] = sp;
+        }
+        spawns.length = w;
 
-        const placed = resolveOverlaps(rowSquares, maxSqX);
-        for (const sq of placed) {
-          ctx.fillStyle = `rgba(${GR},${GG},${GB},${sq.op.toFixed(2)})`;
-          ctx.fillRect(sq.x, sq.y, CELL, CELL);
-
+        const placed = resolveOverlaps(rowSquaresBuf, maxSqX);
+        drawSquareBatches(placed);
+        for (let pi = 0; pi < placed.length; pi++) {
+          const sq = placed[pi];
           const lblCx = sq.x + CELL * 0.5;
           if (sq.chip && sq.op > 0.35 && lblCx < maxLblX) {
             pendingLabels.push({
@@ -641,32 +781,58 @@
     nodes.forEach((nd, i) => { idxOf[nd.id] = i; });
     for (let e = 0; e < edges.length; e++) { edges[e][0] = idxOf[edges[e][0]]; edges[e][1] = idxOf[edges[e][1]]; }
 
+    const hubNodes = nodes.filter(nd => nd.hubName);
+    const physCellInv = 1 / CFG.REPULSION_RANGE;
+
     // ── Physics tick ──────────────────────────────────────────────────────────────
     function netTick() {
-      const n = nodes.length, cx = NCX(), cy = NCY();
+      const n = nodes.length, cx = frame.ncx, cy = frame.ncy;
       const a = Math.max(alphaSim, CFG.ALPHA_MIN);
       for (let i = 0; i < n; i++) { nodes[i].fx = 0; nodes[i].fy = 0; }
-      // Gravity
       for (let i = 0; i < n; i++) {
         const nd = nodes[i];
         const g = nd.community === 0 ? CFG.GRAVITY_MAIN * (CFG.GRAVITY_MAIN_BASE + nd.r * CFG.GRAVITY_MAIN_R) : CFG.GRAVITY_PERI;
         nd.fx += (cx - nd.x) * g * a; nd.fy += (cy - nd.y) * g * a;
       }
-      // Repulsion + collision
       const rrs = CFG.REPULSION_RANGE * CFG.REPULSION_RANGE;
+      physBuckets.clear();
       for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-          const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
-          const dsq = dx * dx + dy * dy || .01;
-          const mn = nodes[i].r + nodes[j].r + CFG.COLLISION_GAP;
-          if (dsq < mn * mn) {
-            const d = Math.sqrt(dsq), ov = (mn - d) * CFG.COLLISION_RESP, nx = dx / d, ny = dy / d;
-            nodes[i].x += nx * ov; nodes[i].y += ny * ov; nodes[j].x -= nx * ov; nodes[j].y -= ny * ov;
-          }
-          if (dsq < rrs) {
-            const d = Math.sqrt(dsq), str = (nodes[i].r * nodes[j].r * CFG.REPULSION_R_MUL + CFG.REPULSION_BASE) * a;
-            const fx = dx / d * str / dsq, fy = dy / d * str / dsq;
-            nodes[i].fx += fx; nodes[i].fy += fy; nodes[j].fx -= fx; nodes[j].fy -= fy;
+        const nd = nodes[i];
+        const key = ((nd.x * physCellInv) | 0) + ',' + ((nd.y * physCellInv) | 0);
+        let bucket = physBuckets.get(key);
+        if (!bucket) { bucket = []; physBuckets.set(key, bucket); }
+        bucket.push(i);
+      }
+      for (let i = 0; i < n; i++) {
+        const ni = nodes[i];
+        const ix = (ni.x * physCellInv) | 0;
+        const iy = (ni.y * physCellInv) | 0;
+        for (let ox = -1; ox <= 1; ox++) {
+          for (let oy = -1; oy <= 1; oy++) {
+            const bucket = physBuckets.get((ix + ox) + ',' + (iy + oy));
+            if (!bucket) continue;
+            for (let t = 0; t < bucket.length; t++) {
+              const j = bucket[t];
+              if (j <= i) continue;
+              const nj = nodes[j];
+              const dx = ni.x - nj.x, dy = ni.y - nj.y;
+              let dsq = dx * dx + dy * dy;
+              if (dsq < 1e-4) dsq = 1e-4;
+              const mn = ni.r + nj.r + CFG.COLLISION_GAP;
+              const mnSq = mn * mn;
+              if (dsq < mnSq) {
+                const d = Math.sqrt(dsq), ov = (mn - d) * CFG.COLLISION_RESP;
+                const inv = 1 / d, nx = dx * inv, ny = dy * inv;
+                ni.x += nx * ov; ni.y += ny * ov;
+                nj.x -= nx * ov; nj.y -= ny * ov;
+              }
+              if (dsq < rrs) {
+                const d = Math.sqrt(dsq), str = (ni.r * nj.r * CFG.REPULSION_R_MUL + CFG.REPULSION_BASE) * a;
+                const f = str / (dsq * d), fx = dx * f, fy = dy * f;
+                ni.fx += fx; ni.fy += fy;
+                nj.fx -= fx; nj.fy -= fy;
+              }
+            }
           }
         }
       }
@@ -688,14 +854,13 @@
     // ── Draw network (clipped to right of barrier) ─────────────────────────────
     function drawNetwork(fade, at) {
       if (fade <= 0) return;
+      const clipL = frame.barrierRight;
       ctx.save();
-      // Clip so network never crosses the barrier
       ctx.beginPath();
-      ctx.rect(BX(), 0, W - BX(), H);
+      ctx.rect(clipL, 0, W - clipL, H);
       ctx.clip();
       ctx.globalAlpha = fade;
 
-      // Edges
       for (const [ai, bi, cv] of edges) {
         const na = nodes[ai], nb = nodes[bi];
         const isM = na.community === 0 && nb.community === 0;
@@ -715,11 +880,10 @@
         const c = nd.pColor || CYA;
         const br = settled ? 1 + CFG.BREATHE_AMP * Math.sin(at * CFG.BREATHE_SPEED + nd.phase) : 1;
         const r = nd.r * br;
-        if (r > CFG.NODE_GLOW_THRESH) {
+        if (nd.community === 0 && r > CFG.NODE_GLOW_THRESH) {
           const gr = r * CFG.NODE_GLOW_R;
           const grd = ctx.createRadialGradient(nd.x, nd.y, r * CFG.NODE_GLOW_INNER, nd.x, nd.y, gr);
-          const gA = nd.community === 0 ? CFG.NODE_GLOW_A_MAIN : CFG.NODE_GLOW_A_PERI;
-          grd.addColorStop(0, `rgba(${c.join(',')},${gA})`);
+          grd.addColorStop(0, `rgba(${c.join(',')},${CFG.NODE_GLOW_A_MAIN})`);
           grd.addColorStop(1, `rgba(${c.join(',')},0)`);
           ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(nd.x, nd.y, gr, 0, Math.PI * 2); ctx.fill();
         }
@@ -731,12 +895,14 @@
       ctx.restore();
 
       // Hub pills drawn outside clip (they float above nodes, may slightly overhang)
-      const labOp = Math.max(0, Math.min(1, (CFG.NET_FADE_START - alphaSim) / (CFG.NET_FADE_START - CFG.NET_FADE_END)));
-      for (const nd of nodes) {
-        if (!nd.hubName) continue;
-        if (nd.x < BX() + 10) continue;   // don't draw label left of barrier
+      const labOp = Math.max(0, Math.min(1, (CFG.NET_FADE_START - alphaSim) / (CFG.NET_FADE_START - CFG.NET_FADE_END))) * fade;
+      if (labOp < 0.04) return;
+      const hubClip = clipL + 10;
+      for (let hi = 0; hi < hubNodes.length; hi++) {
+        const nd = hubNodes[hi];
+        if (nd.x < hubClip) continue;
         const br = settled ? 1 + CFG.BREATHE_AMP * Math.sin(at * CFG.BREATHE_SPEED + nd.phase) : 1;
-        drawLabelPill(nd.hubName, nd.x, nd.y - nd.r * br, labOp * fade, CFG.FONT_PILL_HUB);
+        drawLabelPill(nd.hubName, nd.x, nd.y - nd.r * br, labOp, CFG.FONT_KG_LABEL);
       }
     }
 
@@ -763,14 +929,15 @@
 
     function drawStreams(fade) {
       if (fade < 0.05) return;
-      const bx = BX();
+      const sx0 = frame.barrierRight;
       const [sr, sg, sb] = CYA;
+      const streamStroke = `rgba(${sr},${sg},${sb},1)`;
 
       for (const s of sData) {
         s.t += s.spd;
         if (s.t >= 1) resetStream(s);
         const ex = s.tgt.x, ey = s.tgt.y;
-        const sx = bx, sy = s.y0;
+        const sx = sx0, sy = s.y0;
         const c1x = sx + (ex - sx) * 0.38, c1y = sy;
         const c2x = sx + (ex - sx) * 0.65, c2y = ey;
         const op = s.t < .07 ? s.t / .07 : s.t > .93 ? (1 - s.t) / .07 : 1;
@@ -778,41 +945,58 @@
         // Path line
         ctx.save();
         ctx.globalAlpha = op * fade * CFG.STREAM_PATH_ALPHA;
-        ctx.strokeStyle = `rgba(${sr},${sg},${sb},1)`;
+        ctx.strokeStyle = streamStroke;
         ctx.lineWidth = CFG.STREAM_PATH_WIDTH;
         ctx.beginPath(); ctx.moveTo(sx, sy);
         ctx.bezierCurveTo(c1x, c1y, c2x, c2y, ex, ey);
         ctx.stroke();
 
-        // Glow circle around dot
         const pt = bezPt(sx, sy, c1x, c1y, c2x, c2y, ex, ey, s.t);
         ctx.globalAlpha = op * fade * CFG.STREAM_GLOW_ALPHA;
-        const grd = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, CFG.STREAM_GLOW_R);
-        grd.addColorStop(0, `rgba(${sr},${sg},${sb},1)`);
-        grd.addColorStop(1, `rgba(${sr},${sg},${sb},0)`);
-        ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(pt.x, pt.y, CFG.STREAM_GLOW_R, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = streamStroke;
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, CFG.STREAM_GLOW_R, 0, Math.PI * 2); ctx.fill();
 
-        // Moving dot
         ctx.globalAlpha = op * fade * CFG.STREAM_DOT_ALPHA;
-        ctx.fillStyle = `rgba(${sr},${sg},${sb},1)`;
+        ctx.fillStyle = streamStroke;
         ctx.beginPath(); ctx.arc(pt.x, pt.y, CFG.STREAM_DOT_R, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // BARRIER — sharp line, no glow effect
-    // ═══════════════════════════════════════════════════════════════════════════
-    function drawBarrier() {
-      const bx = BX();
-      const y0 = GRID_TOP();
-      const y1 = GRID_BOT();
-      const [br, bg, bb] = CFG.BARRIER_COLOR;
-      ctx.strokeStyle = `rgb(${br},${bg},${bb})`;
-      ctx.lineWidth = CFG.BARRIER_LINE_W;
-      ctx.beginPath(); ctx.moveTo(bx, y0); ctx.lineTo(bx, y1); ctx.stroke();
+    function syncBarrierPanelStyle() {
+      const op = CFG.BARRIER_BG_OPACITY;
+      const inv = 1 - op;
+      barrierPanelEl.style.borderRadius = CFG.BARRIER_RECT_RADIUS + 'px';
+      barrierPanelEl.style.borderColor = CFG.BARRIER_BORDER;
+      barrierPanelEl.style.boxShadow = `0 ${CFG.BARRIER_SHADOW_Y}px ${CFG.BARRIER_SHADOW_BLUR}px rgba(0,0,0,${CFG.BARRIER_SHADOW_OP})`;
+      barrierPanelEl.style.backdropFilter = `blur(${CFG.BARRIER_BACKDROP_BLUR}px)`;
+      barrierPanelEl.style.webkitBackdropFilter = `blur(${CFG.BARRIER_BACKDROP_BLUR}px)`;
+      barrierPanelEl.style.background = `linear-gradient(177deg,
+        rgba(81,221,247,${op}) 29.73%,
+        rgba(255,255,255,${op + inv * 0.08}) 111.04%)`;
+      barrierLabelEl.textContent = CFG.BARRIER_LABEL;
+      barrierLabelEl.style.right = CFG.BARRIER_LABEL_INSET_X + 'px';
+      barrierLabelEl.style.bottom = CFG.BARRIER_LABEL_INSET_Y + 'px';
+      barrierLabelEl.style.opacity = String(CFG.BARRIER_LABEL_OP);
+    }
+
+    // Z_LAYER.BARRIER — glass panel (HTML) above conveyor squares
+    function syncBarrierPanel() {
+      const bw = CFG.BARRIER_RECT_W;
+      const x = frame.bx - bw * 0.5;
+      const h = frame.gBot - frame.gTop;
+      barrierPanelEl.style.left = x + 'px';
+      barrierPanelEl.style.top = frame.gTop + 'px';
+      barrierPanelEl.style.width = bw + 'px';
+      barrierPanelEl.style.height = h + 'px';
+    }
+
+    function drawBarrierPanel() {
+      syncBarrierPanel();
+    }
+
+    function drawZoneTitles() {
       drawSectionLabel(CFG.CONVEYOR_ZONE_LABEL, 0);
-      drawSectionLabel(CFG.BARRIER_LABEL, bx);
       drawSectionLabelRight(CFG.KG_ZONE_LABEL, W);
     }
 
@@ -826,11 +1010,14 @@
       const dt = Math.min((now - lastT) / 1000, 0.05);
       lastT = now; animTime += dt;
 
+      beginFrame();
+
       const kgReady = animTime >= CFG.KG_BUILD_DELAY_SEC;
-      if (kgReady) {
-        const ticks = alphaSim > .65 ? 6 : alphaSim > .35 ? 4 : alphaSim > .12 ? 2 : 1;
+      const physicsSettled = alphaSim <= CFG.ALPHA_MIN + CFG.PHYSICS_SETTLED_EPS;
+      if (kgReady && !physicsSettled) {
+        const ticks = alphaSim > .65 ? 4 : alphaSim > .35 ? 3 : alphaSim > .12 ? 2 : 1;
         for (let t = 0; t < ticks; t++) netTick();
-      } else {
+      } else if (!kgReady) {
         alphaSim = 1.0;
       }
 
@@ -845,12 +1032,15 @@
         : 0;
       const fade = simFade * timeFade;
 
+      // Z_LAYER: BG → NETWORK(1) → STREAMS(2) → CONVEYOR(3) → BARRIER(9) → ZONE_TITLES(10)
       drawNetwork(fade, animTime);
       drawStreams(fade);
-      drawBarrier();
       drawGrid(dt);
+      drawBarrierPanel();
+      drawZoneTitles();
     }
 
+    syncBarrierPanelStyle();
     requestAnimationFrame(loop);
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -861,6 +1051,8 @@
       H = canvas.height = window.innerHeight;
       buildGrid();
       sData.forEach(s => { s.y0 = randomStreamY(); });
+      beginFrame();
+      syncBarrierPanel();
     });
   </script>
 </body>
