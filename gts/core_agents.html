@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical AI Agents</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: #F7F7F7;
+        }
+
+        #kg-bg {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            z-index: 1;
+        }
+
+        .node {
+            cursor: grab;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .node.dragging,
+        .kg-badge.dragging {
+            cursor: grabbing;
+        }
+
+        .kg-badge {
+            cursor: grab;
+        }
+
+        .source-icon-float {
+            animation: source-float 3.4s ease-in-out infinite;
+        }
+
+        @keyframes source-float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-7px); }
+        }
+
+        .node-label {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 18px;
+            font-weight: 400;
+            fill: #0a3040;
+            pointer-events: none;
+            text-anchor: start;
+        }
+
+    </style>
+</head>
+
+<body>
+    <canvas id="kg-bg"></canvas>
+    <svg id="viz"></svg>
+    <script>
+        'use strict';
+
+        // ════════════════════════════════════════════════════════════════════════════
+        // DESIGN TOKENS — tweak everything here
+        // ════════════════════════════════════════════════════════════════════════════
+
+        // Palette
+        const ACCENT = '#00D4FF';
+        const BG = '#F7F7F7';
+        const BG_GRAD_INNER = '#F7F7F7';
+        const BG_GRAD_OUTER = '#F7F7F7';
+
+        // Node geometry
+        const NODE_W = 126;
+        const NODE_H = 126;
+        const ARCHIVE_H = 42;
+        const ARCHIVE_W = ARCHIVE_H * 7;
+        const ARCHIVE_RADIUS = 6;
+        const NODE_RADIUS = 12;
+        const NODE_BORDER = 0.5;
+        const NODE_GLOW_PAD = 0;
+        const NODE_GLOW_RADIUS = 0;
+        const EP_R = 3;
+        const SOURCE_ICON_W = 81;
+        const SOURCE_ICON_H = 87;
+        const AGENT_ICON_W = 36;
+        const AGENT_ICON_H = 38;
+        const AGENT_ICON_PAD = 10;
+        const AGENT_ICON_NODES = new Set(['entity', 'clinical', 'evidence', 'rule']);
+        const PIXEL_FILL_NODES = new Set(['adj', 'archive']);
+        const PIXEL_CELL = 4;
+        const PIXEL_INSET = 3;
+        const PIXEL_FILL_MAX_OP = 0.48;
+        const PIXEL_FILL_CYCLE = 27;
+        const CORE_LOGO_W = 264;
+        const CORE_LOGO_H = 132;
+        const CORE_LOGO_Y_OFFSET = 70;
+        const CORE_LOGO_X_OFFSET = -88;
+        const NODE_LABEL_GAP = 8;
+        const KG_Y_OFFSET = -88;
+        const ARCHIVE_X_OFFSET = -100;
+        const ARCHIVE_Y_OFFSET = -88;
+        const NODE_LABEL_LINE = 22;
+
+        // Node fills — keep below ~0.75 opacity for backdrop blur to read through
+        const FILL_AGENT = 'rgba(236,251,254,0.60)';
+        const FILL_ARCHIVE = 'rgba(255,255,255,0.9)';
+        const FILL_CORE = 'rgba(208,244,255,0.9)';
+        const GLOW_FILL_AGENT = 'rgba(0,212,255,0.05)';
+        const GLOW_FILL_SPECIAL = 'rgba(0,212,255,0.10)';
+
+        // Backdrop blur on node boxes
+        const BACKDROP_BLUR = 50;   // px
+        const BACKDROP_SAT = 130;  // %
+
+        // Corner tick marks
+        const TICK_LEN = 0;
+
+        // Info panel (right side of box)
+        const PANEL_X = 0;
+
+        // Wires
+        const WIRE_GAP = 16;
+        const CP_HORIZ = 0.44;
+        const CP_VERT = 0.42;
+        const CP_VERT_X = 0.28;
+        const CP_MIN = 20;
+
+        // Terminator dots at wire ends
+        const DOT_R_BLUE = 2.5;
+        const DOT_R_GRAY = 2.0;
+
+        const DOT_FILL_BLUE = ACCENT;
+        const DOT_FILL_GRAY = 'rgba(130,185,200,1)';
+        const DOT_FILL_CORE = 'rgba(0,210,240,1)';
+        const DOT_OP_BLUE = 0.85;
+        const DOT_OP_GRAY = 0.65;
+
+        // Edge widths / opacities — main flow & skip-one
+        const LINE_W_BLUE = 0.5;
+        const LINE_W_GRAY = 0.5;
+        const LINE_OP_BLUE_BASE = 0.6;
+        const LINE_OP_BLUE_FADE = 0.7;
+        const LINE_OP_GRAY = 0.3;
+
+        // Glow — main flow & skip-one
+        const GLOW_W_BLUE = 1;
+        const GLOW_W_GRAY = 4;
+        const GLOW_OP_BLUE = 0.11;
+        const GLOW_OP_GRAY = 0.07;
+
+        // ── Main flow gradient ──────────────────────────────────────────────────────
+        const GRADIENT_FROM = '#8392A3';                // gradient start color
+        const COLOR_SECONDARY = 'rgba(105,105,110,0.2)'; // skip-one wire color
+        const DOT_FILL_FLOW_SRC = '#0d1520';                // dot at gradient source end
+
+        // ── Corridor — flow & skip-one ──────────────────────────────────────────────
+        // CORRIDOR_W_* removed — width is now derived from wire spread (n-1)*WIRE_GAP/2
+        // To hide a corridor set its _OP to 0
+        const CORRIDOR_OP_BLUE = 0.2;
+        const CORRIDOR_OP_GRAY = 0.04;
+        const CORRIDOR_FILL_BLUE = ACCENT;
+        const CORRIDOR_FILL_GRAY = 'rgba(100,175,190,1)';
+
+        // ── CORE Ontology connections ───────────────────────────────────────────────
+        const CORE_LINE_COLOR = 'rgba(0,182,212,0.2)';  // wire stroke color
+        const CORE_LINE_W = 0.5;                    // wire stroke-width
+        const CORE_LINE_OP = 0.2;                    // wire opacity
+        const CORE_GLOW_W = 3;                      // glow stroke-width
+        const CORE_GLOW_OP = 0.06;                   // glow opacity
+        const CORE_DOT_R = 2.2;                    // terminator dot radius
+        const CORE_DOT_OP = 0.78;                   // terminator dot opacity
+        const CORE_CORRIDOR_COLOR = ACCENT;                // corridor fill
+        // CORE_CORRIDOR_W removed — width = wire spread
+        const CORE_CORRIDOR_OP = 0.15;                   // corridor opacity
+        const CORE_DASH = '0 0';                  // dash pattern
+
+        // ── Archive connections ─────────────────────────────────────────────────────
+        const ARCHIVE_LINE_COLOR = 'rgba(8,10,16,0.2)'; // wire stroke color
+        const ARCHIVE_LINE_W = 1;                   // wire stroke-width
+        const ARCHIVE_LINE_OP = 0.5;                   // wire opacity
+        const ARCHIVE_GLOW_COLOR = '#030405';             // glow color
+        const ARCHIVE_GLOW_W = 0;                     // glow stroke-width
+        const ARCHIVE_GLOW_OP = 0.14;                  // glow opacity
+        const ARCHIVE_DOT_COLOR = 'rgba(10,12,18,0.2)';  // terminator dot color
+        const ARCHIVE_DOT_R = 2.2;                   // terminator dot radius
+        const ARCHIVE_DOT_OP = 0.78;                  // terminator dot opacity
+        const ARCHIVE_CORRIDOR_COLOR = '#08090c';            // corridor fill
+        // ARCHIVE_CORRIDOR_W removed — width = wire spread
+        const ARCHIVE_CORRIDOR_OP = 0.05;                  // corridor opacity
+        const ARCHIVE_DASH = '0 0';                 // dash pattern
+
+        // Node spread for vertical connections (fraction of NODE_W)
+        const SPREAD_HALF = 0.1;
+
+        // Background dot-grid
+        const GRID_SPACING = 38;
+        const GRID_DOT_R = 0.9;
+        const GRID_DOT_OP = 0.09;
+
+        // Drag constraints
+        const DRAG_PAD = 155;
+
+        // Data-flow particles along wires
+        const FLOW_SPEED_MIN = 0.0028;
+        const FLOW_SPEED_MAX = 0.0052;
+        const FLOW_DOT_R = 2.4;
+        const FLOW_DOT_R_ARCH = 2.0;
+        const FLOW_GLOW_MUL = 2.1;
+        const FLOW_GLOW_OP = 0.2;
+        const FLOW_DOT_OP = 0.92;
+
+        // ════════════════════════════════════════════════════════════════════════════
+        // RUNTIME
+        // ════════════════════════════════════════════════════════════════════════════
+
+        let W = window.innerWidth;
+        let H = window.innerHeight;
+
+        // ── Nodes (numbered for easy reference: "node 3", "from #2 to #6", …) ─────
+        // NODE_REGISTRY is the canonical map num ↔ id ↔ label
+        const NODE_REGISTRY = [
+            { num: 1, id: 'source', label: 'Source (endpoint)' },
+            { num: 2, id: 'entity', label: 'Entity Extraction' },
+            { num: 3, id: 'clinical', label: 'Clinical Data Normalization' },
+            { num: 4, id: 'evidence', label: 'Evidence Retrieval' },
+            { num: 5, id: 'rule', label: 'Rule Inference' },
+            { num: 6, id: 'adj', label: 'Adjudication Review' },
+            { num: 7, id: 'archive', label: 'Decision Audit Log' },
+            { num: 8, id: 'core', label: 'Knowledge Graph (simulation)' },
+        ];
+
+        const nodeData = NODE_REGISTRY
+            .filter(({ id }) => id !== 'core')
+            .map(({ num, id, label }) => {
+                const type = id === 'source' ? 'endpoint' : 'agent';
+                const node = { num, id, type };
+                if (type === 'agent') {
+                    node.label = label;
+                }
+                return node;
+            });
+
+        const byNum = (n) => nodeData.find(nd => nd.num === n);
+        const byId = (id) => nodeData.find(nd => nd.id === id);
+
+        // Layout matched to reference: zig-zag pipeline + KG top-center + archive bottom bar
+        const initPos = {
+            source: [0.075, 0.500],
+            entity: [0.210, 0.370],
+            clinical: [0.355, 0.495],
+            evidence: [0.565, 0.365],
+            rule: [0.565, 0.620],
+            adj: [0.785, 0.495],
+            archive: [0.520, 0.865],
+            core: [0.370, 0.420],
+        };
+
+        let kgCenter = { x: W * initPos.core[0], y: H * initPos.core[1] + KG_Y_OFFSET };
+
+        nodeData.forEach(n => {
+            const [fx, fy] = initPos[n.id];
+            n.x = W * fx;
+            n.y = H * fy;
+            if (n.id === 'archive') {
+                n.x += ARCHIVE_X_OFFSET;
+                n.y += ARCHIVE_Y_OFFSET;
+            }
+        });
+
+        // ── Edge definitions ───────────────────────────────────────────────────────
+        const edgeDefs = [
+            { from: 'entity', to: 'evidence', n: 4, blue: false },
+            { from: 'entity', to: 'rule', n: 4, blue: false },
+            { from: 'clinical', to: 'adj', n: 4, blue: false },
+            { from: 'source', to: 'entity', n: 6, blue: true },
+            { from: 'entity', to: 'clinical', n: 6, blue: true },
+            { from: 'clinical', to: 'evidence', n: 5, blue: true },
+            { from: 'clinical', to: 'rule', n: 5, blue: true },
+            { from: 'evidence', to: 'adj', n: 5, blue: true },
+            { from: 'rule', to: 'adj', n: 5, blue: true },
+        ];
+
+        // Flow agents → #8 Knowledge Graph (all converge at center)
+        const kgUpDefs = [
+            { from: 'entity', n: 4 },
+            { from: 'clinical', n: 4 },
+            { from: 'evidence', n: 4 },
+            { from: 'rule', n: 4 },
+            { from: 'adj', n: 4 },
+        ];
+
+        // #7 Archive: one wire per other node (#1–#6, #8)
+        const archiveDefs = [
+            { from: 'source', n: 1 },
+            { from: 'entity', n: 1 },
+            { from: 'clinical', n: 1 },
+            { from: 'evidence', n: 1 },
+            { from: 'rule', n: 1 },
+            { from: 'adj', n: 1 },
+        ];
+
+        const kgArchDefs = [
+            { n: 1 },
+        ];
+
+        // ── SVG ────────────────────────────────────────────────────────────────────
+        const svg = d3.select('#viz').attr('width', W).attr('height', H);
+        const defs = svg.append('defs');
+
+        svg.append('rect').attr('id', 'bg-rect').attr('width', W).attr('height', H).attr('fill', 'none');
+
+        const dotPat = defs.append('pattern')
+            .attr('id', 'dots').attr('width', GRID_SPACING).attr('height', GRID_SPACING)
+            .attr('patternUnits', 'userSpaceOnUse');
+        dotPat.append('circle')
+            .attr('cx', GRID_SPACING / 2).attr('cy', GRID_SPACING / 2).attr('r', GRID_DOT_R)
+            .attr('fill', '#007a9a').attr('opacity', GRID_DOT_OP);
+        svg.append('rect').attr('width', W).attr('height', H).attr('fill', 'url(#dots)').attr('id', 'grid-rect');
+
+        // z-layers (bottom → top): corridors → core → archive → flow → nodes
+        const corridorLayer = svg.append('g');
+        const coreLayer = svg.append('g');
+        const archiveLayer = svg.append('g');
+        const flowLayer = svg.append('g');
+        const particleLayer = svg.append('g').attr('class', 'flow-particles').attr('pointer-events', 'none');
+        const nodesLayer = svg.append('g');
+
+        // One linearGradient per blue flow edge — coords updated every frame
+        const flowGradients = edgeDefs.map((def, i) => {
+            if (!def.blue) return null;
+            const g = defs.append('linearGradient')
+                .attr('id', `fg${i}`)
+                .attr('gradientUnits', 'userSpaceOnUse');
+            g.append('stop').attr('offset', '0%')
+                .attr('stop-color', GRADIENT_FROM).attr('stop-opacity', 1);
+            g.append('stop').attr('offset', '100%')
+                .attr('stop-color', ACCENT).attr('stop-opacity', 1);
+            return g;
+        });
+
+        // ── Geometry helpers ───────────────────────────────────────────────────────
+        function nodeSize(node) {
+            if (node.id === 'archive') return { w: ARCHIVE_W, h: ARCHIVE_H };
+            return { w: NODE_W, h: NODE_H };
+        }
+
+        function sideX(node, dir) {
+            if (node.type === 'endpoint') {
+                if (node.id === 'source') {
+                    const half = SOURCE_ICON_W * 0.44;
+                    return node.x + (dir === 'right' ? half : -half);
+                }
+                return node.x + (dir === 'right' ? EP_R : -EP_R);
+            }
+            const { w } = nodeSize(node);
+            return node.x + (dir === 'right' ? w / 2 : -w / 2);
+        }
+        function botY(node) {
+            if (node.type === 'endpoint') return node.y + EP_R;
+            return node.y + nodeSize(node).h / 2;
+        }
+        function topY(node) {
+            if (node.type === 'endpoint') return node.y - EP_R;
+            return node.y - nodeSize(node).h / 2;
+        }
+
+        function kgHubPos(hubIdx) {
+            return coreKgSim ? coreKgSim.hubPos(hubIdx) : null;
+        }
+
+        function kgCenterAnchor() {
+            const hp = kgHubPos(0);
+            if (hp) return { x: hp.x, y: hp.y, r: hp.r };
+            return { x: kgCenter.x, y: kgCenter.y, r: 14 };
+        }
+
+        function kgHubSpread(n) {
+            return (n - 1) / 2 * WIRE_GAP * 0.55;
+        }
+
+        function hBez(x1, y1, x2, y2) {
+            const cp = Math.max(Math.abs(x2 - x1) * CP_HORIZ, CP_MIN);
+            return `M${x1},${y1} C${x1 + cp},${y1} ${x2 - cp},${y2} ${x2},${y2}`;
+        }
+
+        function sBez(x1, y1, x2, y2) {
+            const dx = x2 - x1, dy = y2 - y1;
+            const cpY = Math.max(Math.abs(dy) * CP_VERT, CP_MIN) * Math.sign(dy);
+            const cpX = Math.abs(dx) * CP_VERT_X * Math.sign(dx);
+            return `M${x1},${y1} C${x1 + cpX},${y1 + cpY} ${x2 - cpX},${y2 - cpY} ${x2},${y2}`;
+        }
+
+        function spreadX(node, i, total) {
+            if (total <= 1) return node.x;
+            const { w } = nodeSize(node);
+            const t = i / (total - 1);
+            return node.x - w * SPREAD_HALF + t * w * SPREAD_HALF * 2;
+        }
+
+        // Half-spread of the wire bundle at a node (0 for endpoint = converges to a point)
+        function halfSpread(node, n) {
+            return node.type === 'endpoint' ? 0 : (n - 1) / 2 * WIRE_GAP;
+        }
+
+        // #8 KG → agent: evidence (#4) and adj (#6) attach on the left face
+        function kgAgentExit(def, sNode, idx) {
+            if (def.from === 'evidence' || def.from === 'adj') {
+                return { x: sideX(sNode, 'left'), y: sNode.y, hSpread: halfSpread(sNode, def.n), left: true };
+            }
+            return {
+                x: sNode.type === 'endpoint' ? sNode.x : spreadX(sNode, idx, kgUpDefs.length),
+                y: topY(sNode),
+                hSpread: halfSpread(sNode, def.n),
+                left: false,
+            };
+        }
+
+        // #6 Adjudication: incoming bundles converge to one point on the left face
+        function adjEntryAnchor(from, to) {
+            const x = sideX(to, 'left');
+            if (from.id === 'evidence') return { x, y: to.y - NODE_H * 0.22, hTo: 0 };
+            if (from.id === 'rule') return { x, y: to.y + NODE_H * 0.22, hTo: 0 };
+            return { x, y: to.y, hTo: 0 };
+        }
+
+        // Filled corridor that follows horizontal bezier bundle (tapers at endpoints)
+        function hCorridorPath(x1, fromY, hFrom, x2, toY, hTo) {
+            const cp = Math.max(Math.abs(x2 - x1) * CP_HORIZ, CP_MIN);
+            const y1t = fromY - hFrom, y1b = fromY + hFrom;
+            const y2t = toY - hTo, y2b = toY + hTo;
+            return `M${x1},${y1t}` +
+                ` C${x1 + cp},${y1t} ${x2 - cp},${y2t} ${x2},${y2t}` +
+                ` L${x2},${y2b}` +
+                ` C${x2 - cp},${y2b} ${x1 + cp},${y1b} ${x1},${y1b}` +
+                ` Z`;
+        }
+
+        // Filled corridor that follows vertical/diagonal bezier bundle (tapers at endpoints)
+        function vCorridorPath(xc1, y1, hX1, xc2, y2, hX2) {
+            const lx1 = xc1 - hX1, lx2 = xc2 - hX2;
+            const rx1 = xc1 + hX1, rx2 = xc2 + hX2;
+            const dy = y2 - y1;
+            // left edge (forward)
+            const ldx = lx2 - lx1;
+            const lcpY = Math.max(Math.abs(dy) * CP_VERT, CP_MIN) * Math.sign(dy);
+            const lcpX = Math.abs(ldx) * CP_VERT_X * Math.sign(ldx);
+            // right edge (reversed back to start)
+            const rdx = rx2 - rx1;
+            const rcpX = Math.abs(rdx) * CP_VERT_X * Math.sign(rdx);
+            return `M${lx1},${y1}` +
+                ` C${lx1 + lcpX},${y1 + lcpY} ${lx2 - lcpX},${y2 - lcpY} ${lx2},${y2}` +
+                ` L${rx2},${y2}` +
+                ` C${rx2 - rcpX},${y2 - lcpY} ${rx1 + rcpX},${y1 + lcpY} ${rx1},${y1}` +
+                ` Z`;
+        }
+
+        // ── Wire + corridor factories ──────────────────────────────────────────────
+        function makeWires(layer, n, dash) {
+            const g = layer.append('g');
+            return Array.from({ length: n }, () => ({
+                glow: g.append('path').attr('fill', 'none').attr('stroke-linecap', 'round'),
+                line: g.append('path').attr('fill', 'none').attr('stroke-linecap', 'round')
+                    .attr('stroke-dasharray', dash || null),
+                d1: g.append('circle'),
+                d2: g.append('circle'),
+            }));
+        }
+
+        function dot(el, x, y, r, fill, op) {
+            el.attr('cx', x).attr('cy', y).attr('r', r).attr('fill', fill).attr('opacity', op);
+        }
+
+        function bezPtsH(x1, y1, x2, y2) {
+            const cp = Math.max(Math.abs(x2 - x1) * CP_HORIZ, CP_MIN);
+            return [x1, y1, x1 + cp, y1, x2 - cp, y2, x2, y2];
+        }
+
+        function bezPtsS(x1, y1, x2, y2) {
+            const dx = x2 - x1, dy = y2 - y1;
+            const cpY = Math.max(Math.abs(dy) * CP_VERT, CP_MIN) * (dy === 0 ? 1 : Math.sign(dy));
+            const cpX = Math.abs(dx) * CP_VERT_X * (dx === 0 ? 1 : Math.sign(dx));
+            return [x1, y1, x1 + cpX, y1 + cpY, x2 - cpX, y2 - cpY, x2, y2];
+        }
+
+        function pointOnBez(pts, t) {
+            const [x1, y1, cx1, cy1, cx2, cy2, x2, y2] = pts;
+            const u = 1 - t;
+            return {
+                x: u * u * u * x1 + 3 * u * u * t * cx1 + 3 * u * t * t * cx2 + t * t * t * x2,
+                y: u * u * u * y1 + 3 * u * u * t * cy1 + 3 * u * t * t * cy2 + t * t * t * y2,
+            };
+        }
+
+        function particleFade(t) {
+            if (t < 0.07) return t / 0.07;
+            if (t > 0.93) return (1 - t) / 0.07;
+            return 1;
+        }
+
+        function wireMidOff(n) {
+            const j = Math.floor((n - 1) / 2);
+            return (j - (n - 1) / 2) * WIRE_GAP;
+        }
+
+        const pathByKey = new Map();
+        let flowParticles = [];
+        let particleGlowSel = null;
+        let particleDotSel = null;
+
+        function collectFlowPaths() {
+            pathByKey.clear();
+
+            const pipelinePairs = [
+                ['source', 'entity'], ['entity', 'clinical'], ['clinical', 'evidence'],
+                ['clinical', 'rule'], ['evidence', 'adj'], ['rule', 'adj'],
+            ];
+            pipelinePairs.forEach(([fromId, toId]) => {
+                const def = edgeDefs.find(e => e.from === fromId && e.to === toId);
+                if (!def) return;
+                const from = byId(fromId), to = byId(toId);
+                const x1 = sideX(from, 'right');
+                const anchor = to.id === 'adj'
+                    ? adjEntryAnchor(from, to)
+                    : { x: sideX(to, 'left'), y: to.y };
+                const off = wireMidOff(def.n);
+                const y1 = from.type === 'endpoint' ? from.y : from.y + off;
+                const y2 = to.type === 'endpoint' ? to.y : (to.id === 'adj' ? anchor.y : to.y + off);
+                pathByKey.set(`pipe:${fromId}:${toId}`, bezPtsH(x1, y1, anchor.x, y2));
+            });
+
+            const archive = byId('archive');
+            if (archive) {
+                const archTY = topY(archive);
+                const nArchTotal = archiveDefs.length + kgArchDefs.length;
+                archiveDefs.forEach((def, idx) => {
+                    const sNode = byId(def.from);
+                    const entryX = spreadX(archive, idx, nArchTotal);
+                    const exitY = botY(sNode);
+                    pathByKey.set(`arch:${def.from}`, bezPtsS(sNode.x, exitY, entryX, archTY));
+                });
+                kgArchDefs.forEach((def, idx) => {
+                    const kc = kgCenterAnchor();
+                    const entryX = spreadX(archive, archiveDefs.length + idx, nArchTotal);
+                    pathByKey.set('kgarch:fwd', bezPtsS(kc.x, kc.y, entryX, archTY));
+                    pathByKey.set('kgarch:rev', bezPtsS(entryX, archTY, kc.x, kc.y));
+                });
+            }
+
+            const kc = kgCenterAnchor();
+            kgUpDefs.forEach((def, idx) => {
+                const sNode = byId(def.from);
+                const exit = kgAgentExit(def, sNode, idx);
+                const off = wireMidOff(def.n);
+                const sx = exit.left ? exit.x : (sNode.type === 'endpoint' ? sNode.x : sNode.x + off);
+                const sy = exit.left ? (sNode.type === 'endpoint' ? sNode.y : exit.y + off) : exit.y;
+                pathByKey.set(`kg:fwd:${def.from}`, bezPtsS(sx, sy, kc.x, kc.y));
+                pathByKey.set(`kg:rev:${def.from}`, bezPtsS(kc.x, kc.y, sx, sy));
+            });
+        }
+
+        function randFlowSpeed() {
+            return FLOW_SPEED_MIN + Math.random() * (FLOW_SPEED_MAX - FLOW_SPEED_MIN);
+        }
+
+        function initFlowParticles() {
+            const items = [];
+            [
+                ['source', 'entity'], ['entity', 'clinical'], ['clinical', 'evidence'],
+                ['clinical', 'rule'], ['evidence', 'adj'], ['rule', 'adj'],
+            ].forEach(([f, t]) => {
+                for (let k = 0; k < 3; k++) {
+                    items.push({
+                        pathKey: `pipe:${f}:${t}`, t: k / 3, speed: randFlowSpeed(), dir: 1,
+                        r: FLOW_DOT_R, fill: ACCENT, glow: FLOW_GLOW_OP, base: FLOW_DOT_OP,
+                    });
+                }
+            });
+            archiveDefs.forEach(def => {
+                for (let k = 0; k < 2; k++) {
+                    items.push({
+                        pathKey: `arch:${def.from}`, t: k / 2, speed: randFlowSpeed() * 0.9, dir: 1,
+                        r: FLOW_DOT_R_ARCH, fill: ARCHIVE_DOT_COLOR, glow: 0.1, base: 0.62,
+                    });
+                }
+            });
+            kgArchDefs.forEach(() => {
+                items.push({
+                    pathKey: 'kgarch:fwd', t: Math.random(), speed: randFlowSpeed() * 0.85, dir: 1,
+                    r: FLOW_DOT_R_ARCH, fill: ARCHIVE_DOT_COLOR, glow: 0.1, base: 0.55,
+                });
+                items.push({
+                    pathKey: 'kgarch:rev', t: Math.random(), speed: randFlowSpeed() * 0.85, dir: 1,
+                    r: FLOW_DOT_R, fill: ACCENT, glow: FLOW_GLOW_OP * 0.85, base: FLOW_DOT_OP * 0.85,
+                });
+            });
+            kgUpDefs.forEach(def => {
+                ['fwd', 'rev'].forEach(dir => {
+                    for (let k = 0; k < 2; k++) {
+                        items.push({
+                            pathKey: `kg:${dir}:${def.from}`,
+                            t: (k + Math.random() * 0.25) / 2,
+                            speed: randFlowSpeed() * 0.95, dir: 1,
+                            r: FLOW_DOT_R,
+                            fill: dir === 'fwd' ? DOT_FILL_CORE : ACCENT,
+                            glow: FLOW_GLOW_OP * 0.75, base: FLOW_DOT_OP * 0.82,
+                        });
+                    }
+                });
+            });
+            flowParticles = items;
+
+            const glowG = particleLayer.append('g').attr('class', 'flow-glow');
+            const dotG = particleLayer.append('g').attr('class', 'flow-dots');
+            particleGlowSel = glowG.selectAll('circle')
+                .data(flowParticles).join('circle').attr('pointer-events', 'none');
+            particleDotSel = dotG.selectAll('circle')
+                .data(flowParticles).join('circle').attr('pointer-events', 'none');
+        }
+
+        function stepFlowParticles() {
+            if (!particleGlowSel || !particleDotSel) return;
+            for (const p of flowParticles) {
+                const pts = pathByKey.get(p.pathKey);
+                if (!pts) continue;
+                p.t += p.speed * p.dir;
+                if (p.t >= 1) p.t -= 1;
+                if (p.t < 0) p.t += 1;
+                const pt = pointOnBez(pts, p.t);
+                p.x = pt.x;
+                p.y = pt.y;
+                p.opacity = particleFade(p.t) * p.base;
+            }
+            particleGlowSel
+                .attr('cx', d => d.x).attr('cy', d => d.y)
+                .attr('r', d => d.r * FLOW_GLOW_MUL)
+                .attr('fill', d => d.fill)
+                .attr('opacity', d => (d.opacity || 0) * d.glow);
+            particleDotSel
+                .attr('cx', d => d.x).attr('cy', d => d.y)
+                .attr('r', d => d.r)
+                .attr('fill', d => d.fill)
+                .attr('opacity', d => d.opacity || 0);
+        }
+
+        // One filled corridor shape per edge — tapers to match wire bundle spread
+        const flowCorridors = edgeDefs.map(() => corridorLayer.append('path').attr('stroke', 'none'));
+        const kgUpCorridors = kgUpDefs.map(() => corridorLayer.append('path').attr('stroke', 'none'));
+        const archiveCorridors = archiveDefs.map(() => corridorLayer.append('path').attr('stroke', 'none'));
+        const kgArchCorridors = kgArchDefs.map(() => corridorLayer.append('path').attr('stroke', 'none'));
+
+        const flowElems = edgeDefs.map(def => ({ wires: makeWires(flowLayer, def.n), def }));
+        const kgUpElems = kgUpDefs.map((def, idx) => ({ wires: makeWires(coreLayer, def.n, CORE_DASH), def, idx }));
+        const archiveElems = archiveDefs.map((def, idx) => ({ wires: makeWires(archiveLayer, def.n, ARCHIVE_DASH), def, idx }));
+        const kgArchElems = kgArchDefs.map((def, idx) => ({ wires: makeWires(archiveLayer, def.n, ARCHIVE_DASH), def, idx }));
+
+        // ── updateEdges ────────────────────────────────────────────────────────────
+        function updateEdges() {
+
+            // ── 1. Horizontal pipeline ─────────────────────────────────────────────
+            flowElems.forEach(({ wires, def }, i) => {
+                const from = byId(def.from), to = byId(def.to);
+                const x1 = sideX(from, 'right');
+                const toAdj = to.id === 'adj';
+                const anchor = toAdj ? adjEntryAnchor(from, to) : { x: sideX(to, 'left'), y: to.y, hTo: halfSpread(to, def.n) };
+                const x2 = anchor.x, y2c = anchor.y, hTo = anchor.hTo;
+
+                if (def.blue) {
+                    flowGradients[i]
+                        .attr('x1', x1).attr('y1', from.y)
+                        .attr('x2', x2).attr('y2', y2c);
+                }
+
+                const strokeColor = def.blue ? `url(#fg${i})` : COLOR_SECONDARY;
+                const glowColor = def.blue ? GRADIENT_FROM : 'rgba(90,90,95,0.4)';
+                const dR = def.blue ? DOT_R_BLUE : DOT_R_GRAY;
+                const dO = def.blue ? DOT_OP_BLUE : DOT_OP_GRAY;
+
+                flowCorridors[i]
+                    .attr('d', hCorridorPath(x1, from.y, halfSpread(from, def.n),
+                        x2, y2c, hTo))
+                    .attr('fill', def.blue ? `url(#fg${i})` : CORRIDOR_FILL_GRAY)
+                    .attr('fill-opacity', def.blue ? CORRIDOR_OP_BLUE : CORRIDOR_OP_GRAY);
+
+                wires.forEach(({ glow, line, d1, d2 }, j) => {
+                    const off = (j - (def.n - 1) / 2) * WIRE_GAP;
+                    const y1 = from.type === 'endpoint' ? from.y : from.y + off;
+                    const y2 = to.type === 'endpoint' ? to.y : (toAdj ? y2c : to.y + off);
+                    const d = hBez(x1, y1, x2, y2);
+
+                    glow.attr('d', d).attr('stroke', glowColor)
+                        .attr('stroke-width', def.blue ? GLOW_W_BLUE : GLOW_W_GRAY)
+                        .attr('opacity', def.blue ? GLOW_OP_BLUE : GLOW_OP_GRAY);
+                    line.attr('d', d).attr('stroke', strokeColor)
+                        .attr('stroke-width', def.blue ? LINE_W_BLUE : LINE_W_GRAY)
+                        .attr('opacity', def.blue ? LINE_OP_BLUE_BASE - j * LINE_OP_BLUE_FADE : LINE_OP_GRAY);
+
+                    // Dots: dark at source side, accent at target side for blue; gray for secondary
+                    dot(d1, x1, y1, dR, def.blue ? DOT_FILL_FLOW_SRC : DOT_FILL_GRAY, dO);
+                    dot(d2, x2, y2, dR, def.blue ? DOT_FILL_BLUE : DOT_FILL_GRAY, dO);
+                });
+            });
+
+            // ── 2. Flow agents → #8 KG center ────────────────────────────────────────
+            const kc = kgCenterAnchor();
+            kgUpElems.forEach(({ wires, def, idx }) => {
+                const sNode = byId(def.from);
+                const exit = kgAgentExit(def, sNode, idx);
+
+                if (exit.left) {
+                    kgUpCorridors[idx]
+                        .attr('d', hCorridorPath(exit.x, exit.y, exit.hSpread, kc.x, kc.y, 0))
+                        .attr('fill', CORE_CORRIDOR_COLOR)
+                        .attr('fill-opacity', CORE_CORRIDOR_OP);
+                } else {
+                    kgUpCorridors[idx]
+                        .attr('d', vCorridorPath(exit.x, exit.y, exit.hSpread, kc.x, kc.y, 0))
+                        .attr('fill', CORE_CORRIDOR_COLOR)
+                        .attr('fill-opacity', CORE_CORRIDOR_OP);
+                }
+
+                wires.forEach(({ glow, line, d1, d2 }, j) => {
+                    const off = (j - (def.n - 1) / 2) * WIRE_GAP;
+                    const sx = exit.left
+                        ? exit.x
+                        : (sNode.type === 'endpoint' ? sNode.x : sNode.x + off);
+                    const sy = exit.left
+                        ? (sNode.type === 'endpoint' ? sNode.y : exit.y + off)
+                        : exit.y;
+                    const d = sBez(sx, sy, kc.x, kc.y);
+
+                    glow.attr('d', d).attr('stroke', ACCENT)
+                        .attr('stroke-width', CORE_GLOW_W).attr('opacity', CORE_GLOW_OP);
+                    line.attr('d', d).attr('stroke', CORE_LINE_COLOR)
+                        .attr('stroke-width', CORE_LINE_W).attr('opacity', CORE_LINE_OP);
+
+                    dot(d1, sx, sy, CORE_DOT_R, DOT_FILL_CORE, CORE_DOT_OP);
+                    dot(d2, kc.x, kc.y, CORE_DOT_R, DOT_FILL_CORE, CORE_DOT_OP);
+                });
+            });
+
+            // ── 3. Nodes → Archive ─────────────────────────────────────────────────
+            const archive = byId('archive');
+            const archTY = topY(archive);
+            const nArchTotal = archiveDefs.length + kgArchDefs.length;
+
+            archiveElems.forEach(({ wires, def, idx }) => {
+                const sNode = byId(def.from);
+                const entryX = spreadX(archive, idx, nArchTotal);
+                const exitY = botY(sNode);
+
+                archiveCorridors[idx]
+                    .attr('d', vCorridorPath(sNode.x, exitY, halfSpread(sNode, def.n),
+                        entryX, archTY, halfSpread(archive, def.n)))
+                    .attr('fill', ARCHIVE_CORRIDOR_COLOR)
+                    .attr('fill-opacity', ARCHIVE_CORRIDOR_OP);
+
+                wires.forEach(({ glow, line, d1, d2 }, j) => {
+                    const off = (j - (def.n - 1) / 2) * WIRE_GAP;
+                    const sx = sNode.type === 'endpoint' ? sNode.x : sNode.x + off;
+                    const d = sBez(sx, exitY, entryX + off, archTY);
+
+                    glow.attr('d', d).attr('stroke', ARCHIVE_GLOW_COLOR)
+                        .attr('stroke-width', ARCHIVE_GLOW_W).attr('opacity', ARCHIVE_GLOW_OP);
+                    line.attr('d', d).attr('stroke', ARCHIVE_LINE_COLOR)
+                        .attr('stroke-width', ARCHIVE_LINE_W).attr('opacity', ARCHIVE_LINE_OP);
+
+                    dot(d1, sx, exitY, ARCHIVE_DOT_R, ARCHIVE_DOT_COLOR, ARCHIVE_DOT_OP);
+                    dot(d2, entryX + off, archTY, ARCHIVE_DOT_R, ARCHIVE_DOT_COLOR, ARCHIVE_DOT_OP);
+                });
+            });
+
+            // ── 4. #8 KG center → Archive ───────────────────────────────────────────
+            kgArchElems.forEach(({ wires, def, idx }) => {
+                const entryX = spreadX(archive, archiveDefs.length + idx, nArchTotal);
+
+                kgArchCorridors[idx]
+                    .attr('d', vCorridorPath(kc.x, kc.y, 0,
+                        entryX, archTY, halfSpread(archive, def.n)))
+                    .attr('fill', ARCHIVE_CORRIDOR_COLOR)
+                    .attr('fill-opacity', ARCHIVE_CORRIDOR_OP);
+
+                wires.forEach(({ glow, line, d1, d2 }, j) => {
+                    const off = (j - (def.n - 1) / 2) * WIRE_GAP;
+                    const d = sBez(kc.x, kc.y, entryX + off, archTY);
+
+                    glow.attr('d', d).attr('stroke', ARCHIVE_GLOW_COLOR)
+                        .attr('stroke-width', ARCHIVE_GLOW_W).attr('opacity', ARCHIVE_GLOW_OP);
+                    line.attr('d', d).attr('stroke', ARCHIVE_LINE_COLOR)
+                        .attr('stroke-width', ARCHIVE_LINE_W).attr('opacity', ARCHIVE_LINE_OP);
+
+                    dot(d1, kc.x, kc.y, ARCHIVE_DOT_R, ARCHIVE_DOT_COLOR, ARCHIVE_DOT_OP);
+                    dot(d2, entryX + off, archTY, ARCHIVE_DOT_R, ARCHIVE_DOT_COLOR, ARCHIVE_DOT_OP);
+                });
+            });
+
+            collectFlowPaths();
+        }
+
+        // ── Knowledge graph simulation (from knowledge_graph_v2, ~½ node count) ─────
+        function createCoreKnowledgeGraph(canvas, viewW, viewH, centerX, centerY) {
+            const minDim = Math.min(viewW, viewH);
+            const S = minDim / 1050;
+            const KG = {
+                ALPHA_DECAY: 0.0022,
+                ALPHA_MIN: 0.008,
+                INIT_VEL: 1.1,
+                GRAVITY_MAIN: 0.005,
+                GRAVITY_MAIN_BASE: 0.60,
+                GRAVITY_MAIN_R: 0.025,
+                GRAVITY_PERI: 0.0018,
+                REPULSION_RANGE: minDim * 0.13,
+                REPULSION_R_MUL: 5,
+                REPULSION_BASE: 70,
+                COLLISION_GAP: 1.2,
+                COLLISION_RESP: 0.45,
+                SPRING_REST_BASE: 8,
+                SPRING_REST_R: 0.85,
+                SPRING_K: 0.028,
+                DAMPING: 0.44,
+                EDGE_MAIN_ALPHA: 0.14,
+                EDGE_MAIN_ALPHA_R: 0.003,
+                EDGE_PERI_ALPHA: 0.38,
+                EDGE_PERI_ALPHA_R: 0.012,
+                EDGE_MAIN_W: 0.45,
+                EDGE_PERI_W: 0.55,
+                EDGE_CURVE_F: 0.55,
+                NODE_GLOW_THRESH: 5,
+                NODE_GLOW_R: 2.4,
+                NODE_GLOW_INNER: 0.35,
+                NODE_GLOW_A_MAIN: 0.12,
+                NODE_A_BASE: 0.42,
+                NODE_A_R: 0.012,
+                NODE_A_MAX: 0.92,
+                NODE_A_PERI: 0.82,
+                NODE_A_SPREAD: 0.45,
+                BREATHE_AMP: 0.22,
+                BREATHE_SPEED: 1.05,
+                BREATHE_THRESH: 0.48,
+                PH_COUNT: 100,
+                PH_R_MIN: 2, PH_R_RANGE: 4, PH_START_R: 55 * S,
+                PH_SH_E2: 0.50, PH_PH_E1: 0.55, PH_PH_E2: 0.28,
+                SEC_COUNT: 225,
+                SEC_R_MIN: 1.2, SEC_R_RANGE: 2.2, SEC_START_R: 150 * S,
+                SEC_E1: 0.45, SEC_E2: 0.15,
+                ML_COUNT: 70,
+                ML_R_MIN: 0.6, ML_R_RANGE: 1.4, ML_START_R: 180 * S,
+                ML_SEC_P: 0.72, ML_ML_P: 0.22,
+                PERI_COUNT: 6,
+            };
+
+            const HUB_DEF = [
+                { name: 'Treatments', r: 30 }, { name: 'Conditions', r: 24 },
+                { name: 'Symptoms', r: 20 }, { name: 'Diagnostic criteria', r: 24 },
+                { name: 'Decision logic', r: 22 }, { name: 'ACOEM', r: 23 },
+                { name: 'SNOMED', r: 23 }, { name: 'ICD', r: 24 },
+                { name: 'CPT', r: 20 }, { name: 'Protocols', r: 18 },
+                { name: 'Pathology', r: 18 }, { name: 'Genetics', r: 19 },
+                { name: 'Risk Factors', r: 22 }, { name: 'Comorbidities', r: 20 },
+                { name: 'Outcomes', r: 22 }, { name: 'Biomarkers', r: 18 },
+                { name: 'Interventions', r: 18 }, { name: 'LOINC', r: 20 },
+                { name: 'RxNorm', r: 20 }, { name: 'HL7 FHIR', r: 20 },
+                { name: 'MeSH', r: 20 },
+            ];
+
+            const CYA = [0, 215, 255];
+            const ctx = canvas.getContext('2d');
+            let originX = centerX;
+            let originY = centerY;
+            const cx = () => originX;
+            const cy = () => originY;
+            const hubRing = minDim * 0.14;
+            const nodes = [], edges = [];
+            let nid = 0, alphaSim = 1.0;
+            const physBuckets = new Map();
+            const physCellInv = 1 / KG.REPULSION_RANGE;
+
+            function mkNode(r, startR, hubName) {
+                const id = nid++;
+                const a = Math.random() * Math.PI * 2;
+                const d = (startR || 8) * Math.pow(Math.random(), 0.5) * S;
+                nodes.push({
+                    id, r: r * S,
+                    x: cx() + Math.cos(a) * d, y: cy() + Math.sin(a) * d,
+                    vx: (Math.random() - .5) * KG.INIT_VEL,
+                    vy: (Math.random() - .5) * KG.INIT_VEL,
+                    fx: 0, fy: 0,
+                    phase: Math.random() * Math.PI * 2,
+                    aOff: (Math.random() - .5) * KG.NODE_A_SPREAD,
+                    hubName: hubName || null, community: 0, pColor: null,
+                });
+                return id;
+            }
+            const mkEdge = (a, b) => edges.push([a, b, (Math.random() - .5) * KG.EDGE_CURVE_F]);
+            const rndOf = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+            const HUB_IDS = [];
+            HUB_DEF.forEach((hd, i) => {
+                const id = mkNode(hd.r, i === 0 ? 2 : 5, null);
+                HUB_IDS.push(id);
+                if (i === 0) { nodes[id].x = cx(); nodes[id].y = cy(); }
+                else {
+                    const a = (i - 1) / (HUB_DEF.length - 1) * Math.PI * 2;
+                    nodes[id].x = cx() + Math.cos(a) * (hubRing + Math.random() * hubRing * 0.5);
+                    nodes[id].y = cy() + Math.sin(a) * (hubRing * 0.72 + Math.random() * hubRing * 0.28);
+                }
+            });
+            for (let i = 1; i < HUB_IDS.length; i++) mkEdge(HUB_IDS[0], HUB_IDS[i]);
+            for (let i = 1; i < HUB_IDS.length - 1; i++) mkEdge(HUB_IDS[i], HUB_IDS[i + 1]);
+            mkEdge(HUB_IDS[HUB_IDS.length - 1], HUB_IDS[1]);
+
+            const PH = [];
+            for (let i = 0; i < KG.PH_COUNT; i++) {
+                const h = mkNode(KG.PH_R_MIN + Math.random() * KG.PH_R_RANGE, KG.PH_START_R);
+                PH.push(h); mkEdge(h, rndOf(HUB_IDS));
+                if (Math.random() < KG.PH_SH_E2) mkEdge(h, rndOf(HUB_IDS));
+                if (PH.length > 3 && Math.random() < KG.PH_PH_E1) mkEdge(h, rndOf(PH));
+                if (PH.length > 8 && Math.random() < KG.PH_PH_E2) mkEdge(h, rndOf(PH));
+            }
+            const SEC = [];
+            for (let i = 0; i < KG.SEC_COUNT; i++) {
+                const s = mkNode(KG.SEC_R_MIN + Math.random() * KG.SEC_R_RANGE, KG.SEC_START_R);
+                SEC.push(s); mkEdge(s, rndOf(PH));
+                if (SEC.length > 2 && Math.random() < KG.SEC_E1) mkEdge(s, rndOf(SEC));
+                if (SEC.length > 6 && Math.random() < KG.SEC_E2) mkEdge(s, rndOf(SEC));
+            }
+            const ML = [];
+            for (let i = 0; i < KG.ML_COUNT; i++) {
+                const l = mkNode(KG.ML_R_MIN + Math.random() * KG.ML_R_RANGE, KG.ML_START_R);
+                ML.push(l);
+                mkEdge(l, Math.random() < KG.ML_SEC_P ? rndOf(SEC) : rndOf(PH));
+                if (ML.length > 4 && Math.random() < KG.ML_ML_P) mkEdge(l, rndOf(ML));
+            }
+            const PCOL_LIST = [[80, 220, 255], [90, 210, 250], [70, 225, 255],
+                [100, 215, 245], [60, 215, 255], [110, 220, 250]];
+            const outerPool = [...SEC.slice(-22), ...ML.slice(-32)];
+            for (let ci = 0; ci < KG.PERI_COUNT; ci++) {
+                const pc = PCOL_LIST[ci];
+                const bAng = (ci / KG.PERI_COUNT) * Math.PI * 2 + (Math.random() - .5) * .5;
+                const bR = minDim * 0.2 + Math.random() * minDim * 0.08;
+                const cSize = 3 + Math.floor(Math.random() * 6);
+                const cNds = [];
+                for (let k = 0; k < cSize; k++) {
+                    const la = bAng + (Math.random() - .5) * .9, ld = bR + (Math.random() - .5) * 18;
+                    const r = k === 0 ? 2 + Math.random() * 3 : 0.8 + Math.random() * 1.6;
+                    const cn = mkNode(r, 0);
+                    nodes[cn].x = cx() + Math.cos(la) * ld + (Math.random() - .5) * 10;
+                    nodes[cn].y = cy() + Math.sin(la) * ld + (Math.random() - .5) * 10;
+                    nodes[cn].community = ci + 1; nodes[cn].pColor = pc; cNds.push(cn);
+                }
+                for (let k = 1; k < cNds.length; k++) {
+                    mkEdge(cNds[0], cNds[k]);
+                    if (k > 1 && Math.random() < .38) mkEdge(cNds[k - 1], cNds[k]);
+                }
+            }
+
+            nodes.sort((a, b) => a.r - b.r);
+            const idxOf = new Array(nid);
+            nodes.forEach((nd, i) => { idxOf[nd.id] = i; });
+            for (let e = 0; e < edges.length; e++) {
+                edges[e][0] = idxOf[edges[e][0]];
+                edges[e][1] = idxOf[edges[e][1]];
+            }
+            const hubSlots = HUB_IDS.map(id => idxOf[id]);
+
+            function tick() {
+                const n = nodes.length, ccx = cx(), ccy = cy();
+                const a = Math.max(alphaSim, KG.ALPHA_MIN);
+                for (let i = 0; i < n; i++) { nodes[i].fx = 0; nodes[i].fy = 0; }
+                for (let i = 0; i < n; i++) {
+                    const nd = nodes[i];
+                    const g = nd.community === 0
+                        ? KG.GRAVITY_MAIN * (KG.GRAVITY_MAIN_BASE + nd.r * KG.GRAVITY_MAIN_R)
+                        : KG.GRAVITY_PERI;
+                    nd.fx += (ccx - nd.x) * g * a;
+                    nd.fy += (ccy - nd.y) * g * a;
+                }
+                const rrs = KG.REPULSION_RANGE * KG.REPULSION_RANGE;
+                physBuckets.clear();
+                for (let i = 0; i < n; i++) {
+                    const nd = nodes[i];
+                    const key = ((nd.x * physCellInv) | 0) + ',' + ((nd.y * physCellInv) | 0);
+                    let b = physBuckets.get(key);
+                    if (!b) { b = []; physBuckets.set(key, b); }
+                    b.push(i);
+                }
+                for (let i = 0; i < n; i++) {
+                    const ni = nodes[i];
+                    const ix = (ni.x * physCellInv) | 0;
+                    const iy = (ni.y * physCellInv) | 0;
+                    for (let ox = -1; ox <= 1; ox++) {
+                        for (let oy = -1; oy <= 1; oy++) {
+                            const bucket = physBuckets.get((ix + ox) + ',' + (iy + oy));
+                            if (!bucket) continue;
+                            for (let t = 0; t < bucket.length; t++) {
+                                const j = bucket[t];
+                                if (j <= i) continue;
+                                const nj = nodes[j];
+                                const dx = ni.x - nj.x, dy = ni.y - nj.y;
+                                let dsq = dx * dx + dy * dy;
+                                if (dsq < 1e-4) dsq = 1e-4;
+                                const mn = ni.r + nj.r + KG.COLLISION_GAP;
+                                if (dsq < mn * mn) {
+                                    const d = Math.sqrt(dsq), ov = (mn - d) * KG.COLLISION_RESP;
+                                    const inv = 1 / d, nx = dx * inv, ny = dy * inv;
+                                    ni.x += nx * ov; ni.y += ny * ov;
+                                    nj.x -= nx * ov; nj.y -= ny * ov;
+                                }
+                                if (dsq < rrs) {
+                                    const d = Math.sqrt(dsq);
+                                    const str = (ni.r * nj.r * KG.REPULSION_R_MUL + KG.REPULSION_BASE) * a;
+                                    const f = str / (dsq * d), fx = dx * f, fy = dy * f;
+                                    ni.fx += fx; ni.fy += fy;
+                                    nj.fx -= fx; nj.fy -= fy;
+                                }
+                            }
+                        }
+                    }
+                }
+                for (const [ai, bi] of edges) {
+                    const na = nodes[ai], nb = nodes[bi];
+                    const dx = nb.x - na.x, dy = nb.y - na.y;
+                    const d = Math.sqrt(dx * dx + dy * dy) || .01;
+                    const rest = KG.SPRING_REST_BASE + (na.r + nb.r) * KG.SPRING_REST_R;
+                    const f = (d - rest) * KG.SPRING_K * a;
+                    const fx = dx / d * f, fy = dy / d * f;
+                    na.fx += fx; na.fy += fy;
+                    nb.fx -= fx; nb.fy -= fy;
+                }
+                for (let i = 0; i < n; i++) {
+                    const nd = nodes[i];
+                    nd.vx = (nd.vx + nd.fx) * KG.DAMPING;
+                    nd.vy = (nd.vy + nd.fy) * KG.DAMPING;
+                    nd.x += nd.vx; nd.y += nd.vy;
+                }
+                alphaSim = Math.max(KG.ALPHA_MIN, alphaSim - KG.ALPHA_DECAY);
+            }
+
+            function draw(at) {
+                ctx.clearRect(0, 0, viewW, viewH);
+                const settled = alphaSim < KG.BREATHE_THRESH;
+                for (const [ai, bi, cv] of edges) {
+                    const na = nodes[ai], nb = nodes[bi];
+                    const isM = na.community === 0 && nb.community === 0;
+                    const ea = isM
+                        ? KG.EDGE_MAIN_ALPHA + Math.min(na.r, nb.r) * KG.EDGE_MAIN_ALPHA_R
+                        : KG.EDGE_PERI_ALPHA + Math.min(na.r, nb.r) * KG.EDGE_PERI_ALPHA_R;
+                    const ec = (!isM && (na.pColor || nb.pColor)) ? na.pColor || nb.pColor : CYA;
+                    ctx.strokeStyle = `rgba(${ec.join(',')},${ea})`;
+                    ctx.lineWidth = isM ? KG.EDGE_MAIN_W : KG.EDGE_PERI_W;
+                    const mx = (na.x + nb.x) * .5, my = (na.y + nb.y) * .5;
+                    const dx = nb.x - na.x, dy = nb.y - na.y;
+                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                    ctx.beginPath();
+                    ctx.moveTo(na.x, na.y);
+                    ctx.quadraticCurveTo(
+                        mx - dy / len * cv * len, my + dx / len * cv * len, nb.x, nb.y);
+                    ctx.stroke();
+                }
+                for (const nd of nodes) {
+                    const c = nd.pColor || CYA;
+                    const br = settled ? 1 + KG.BREATHE_AMP * Math.sin(at * KG.BREATHE_SPEED + nd.phase) : 1;
+                    const r = nd.r * br;
+                    if (nd.community === 0 && r > KG.NODE_GLOW_THRESH) {
+                        const gr = r * KG.NODE_GLOW_R;
+                        const grd = ctx.createRadialGradient(nd.x, nd.y, r * KG.NODE_GLOW_INNER, nd.x, nd.y, gr);
+                        grd.addColorStop(0, `rgba(${c.join(',')},${KG.NODE_GLOW_A_MAIN})`);
+                        grd.addColorStop(1, `rgba(${c.join(',')},0)`);
+                        ctx.fillStyle = grd;
+                        ctx.beginPath(); ctx.arc(nd.x, nd.y, gr, 0, Math.PI * 2); ctx.fill();
+                    }
+                    let bA = nd.community === 0
+                        ? Math.min(KG.NODE_A_BASE + nd.r * KG.NODE_A_R, KG.NODE_A_MAX)
+                        : KG.NODE_A_PERI;
+                    bA = Math.max(.1, Math.min(1, bA + nd.aOff));
+                    ctx.fillStyle = `rgba(${c.join(',')},${bA})`;
+                    ctx.beginPath(); ctx.arc(nd.x, nd.y, r, 0, Math.PI * 2); ctx.fill();
+                }
+            }
+
+            return {
+                tick,
+                draw,
+                hubPos(i) {
+                    const slot = hubSlots[i];
+                    if (slot == null) return { x: cx(), y: cy(), r: 8 * S };
+                    const nd = nodes[slot];
+                    return { x: nd.x, y: nd.y, r: nd.r };
+                },
+                translate(dx, dy) {
+                    originX += dx;
+                    originY += dy;
+                    for (const nd of nodes) {
+                        nd.x += dx;
+                        nd.y += dy;
+                    }
+                },
+                get settled() { return alphaSim <= KG.ALPHA_MIN + 0.02; },
+            };
+        }
+
+        let coreKgSim = null;
+        let kgAnimT = 0;
+        let kgBadgeG = null;
+
+        function initKgSim() {
+            const c = document.getElementById('kg-bg');
+            c.width = W;
+            c.height = H;
+            coreKgSim = createCoreKnowledgeGraph(c, W, H, kgCenter.x, kgCenter.y);
+        }
+
+        function updateKgBadge() {
+            const hp = kgHubPos(0);
+            if (!hp || !kgBadgeG) return;
+            kgBadgeG.attr('transform', `translate(${hp.x},${hp.y - hp.r - 22})`);
+        }
+
+        function ensureKgBadge() {
+            if (kgBadgeG) return;
+            kgBadgeG = nodesLayer.append('g').attr('class', 'kg-badge node');
+            const labelLeftX = -52;
+            const labelTopY = NODE_LABEL_GAP + 4;
+
+            kgBadgeG.append('circle').attr('class', 'kg-hit').attr('cy', 0).attr('r', 100)
+                .attr('fill', 'transparent');
+
+            kgBadgeG.append('image')
+                .attr('href', 'core_l.png')
+                .attr('x', labelLeftX + CORE_LOGO_X_OFFSET)
+                .attr('y', -CORE_LOGO_H - NODE_LABEL_GAP + CORE_LOGO_Y_OFFSET)
+                .attr('width', CORE_LOGO_W)
+                .attr('height', CORE_LOGO_H)
+                .attr('pointer-events', 'none');
+
+            appendNodeLabel(
+                kgBadgeG,
+                displayLabelLines('core'),
+                labelLeftX,
+                labelTopY,
+                NODE_LABEL_LINE
+            );
+
+            kgBadgeG.call(d3.drag()
+                .on('start', function () { d3.select(this).classed('dragging', true).raise(); })
+                .on('drag', function (event) {
+                    if (!coreKgSim) return;
+                    const prevX = kgCenter.x, prevY = kgCenter.y;
+                    kgCenter.x = Math.max(DRAG_PAD, Math.min(W - DRAG_PAD, kgCenter.x + event.dx));
+                    kgCenter.y = Math.max(DRAG_PAD, Math.min(H - DRAG_PAD, kgCenter.y + event.dy));
+                    coreKgSim.translate(kgCenter.x - prevX, kgCenter.y - prevY);
+                    updateEdges();
+                })
+                .on('end', function () { d3.select(this).classed('dragging', false); })
+            );
+        }
+
+        function displayLabelLines(id) {
+            if (id === 'source') return ['Case Input', 'Health Records'];
+            if (id === 'core') return ['Knowledge Graph'];
+            const item = NODE_REGISTRY.find(n => n.id === id);
+            if (!item) return [];
+            const lbl = item.label;
+            if (lbl.length > 22) {
+                const mid = lbl.lastIndexOf(' ', Math.floor(lbl.length / 2));
+                if (mid > 0) return [lbl.slice(0, mid), lbl.slice(mid + 1)];
+            }
+            return [lbl];
+        }
+
+        let pixelFillPhase = 0;
+        let pixelFillLastT = 0;
+
+        function appendPixelFill(g, nodeId, nw, nh, hw, hh, rx) {
+            const clipId = `pixel-clip-${nodeId}`;
+            g.append('defs').append('clipPath').attr('id', clipId)
+                .append('rect')
+                .attr('x', -hw).attr('y', -hh)
+                .attr('width', nw).attr('height', nh)
+                .attr('rx', rx);
+
+            const cols = Math.floor((nw - PIXEL_INSET * 2) / PIXEL_CELL);
+            const rows = Math.floor((nh - PIXEL_INSET * 2) / PIXEL_CELL);
+
+            const fillG = g.append('g')
+                .attr('class', 'pixel-fill')
+                .attr('data-cell-count', cols * rows)
+                .attr('clip-path', `url(#${clipId})`)
+                .attr('pointer-events', 'none');
+
+            let order = 0;
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    fillG.append('rect')
+                        .attr('class', 'fill-cell')
+                        .attr('data-order', order++)
+                        .attr('x', -hw + PIXEL_INSET + c * PIXEL_CELL)
+                        .attr('y', -hh + PIXEL_INSET + r * PIXEL_CELL)
+                        .attr('width', PIXEL_CELL)
+                        .attr('height', PIXEL_CELL)
+                        .attr('fill', ACCENT)
+                        .attr('opacity', 0);
+                }
+            }
+        }
+
+        function stepPixelFill(now) {
+            if (!pixelFillLastT) pixelFillLastT = now;
+            const dt = Math.min((now - pixelFillLastT) / 1000, 0.05);
+            pixelFillLastT = now;
+            pixelFillPhase = (pixelFillPhase + dt / PIXEL_FILL_CYCLE) % 1;
+
+            d3.selectAll('.pixel-fill').each(function () {
+                const count = +this.getAttribute('data-cell-count');
+                const filled = pixelFillPhase * count;
+                const head = Math.floor(filled);
+                const tail = filled - head;
+
+                d3.select(this).selectAll('.fill-cell').attr('opacity', function () {
+                    const order = +this.getAttribute('data-order');
+                    if (order < head) return PIXEL_FILL_MAX_OP;
+                    if (order === head) return tail * PIXEL_FILL_MAX_OP;
+                    return 0;
+                });
+            });
+        }
+
+        function appendAgentIcon(g, hw, hh) {
+            g.append('image')
+                .attr('href', 'agent_icon.svg')
+                .attr('x', -hw + AGENT_ICON_PAD)
+                .attr('y', hh - AGENT_ICON_H - AGENT_ICON_PAD)
+                .attr('width', AGENT_ICON_W)
+                .attr('height', AGENT_ICON_H)
+                .attr('pointer-events', 'none');
+        }
+
+        function appendNodeLabel(g, lines, leftX, topY, lineH) {
+            const label = g.append('text')
+                .attr('class', 'node-label')
+                .attr('x', leftX)
+                .attr('y', topY);
+            lines.forEach((line, i) => {
+                label.append('tspan')
+                    .attr('x', leftX)
+                    .attr('dy', i === 0 ? 0 : lineH)
+                    .text(line);
+            });
+        }
+
+        function appendSourceVisual(g) {
+            const leftX = -SOURCE_ICON_W / 2;
+            const iconG = g.append('g').attr('class', 'source-icon-float');
+            iconG.append('image')
+                .attr('href', 'Document.svg')
+                .attr('x', leftX)
+                .attr('y', -SOURCE_ICON_H / 2)
+                .attr('width', SOURCE_ICON_W)
+                .attr('height', SOURCE_ICON_H)
+                .attr('pointer-events', 'none');
+
+            appendNodeLabel(
+                iconG,
+                displayLabelLines('source'),
+                leftX,
+                SOURCE_ICON_H / 2 + NODE_LABEL_GAP,
+                NODE_LABEL_LINE
+            );
+        }
+
+        // ── Node rendering ─────────────────────────────────────────────────────────
+        const nodeGroups = {};
+
+        nodeData.forEach(node => {
+            const g = nodesLayer.append('g')
+                .attr('class', 'node')
+                .attr('data-id', node.id)
+                .attr('data-num', node.num);
+            nodeGroups[node.id] = g;
+
+            if (node.type === 'endpoint') {
+                appendSourceVisual(g);
+            } else {
+                const isArchive = node.id === 'archive';
+                const nw = isArchive ? ARCHIVE_W : NODE_W;
+                const nh = isArchive ? ARCHIVE_H : NODE_H;
+                const hw = nw / 2, hh = nh / 2;
+                const rx = isArchive ? ARCHIVE_RADIUS : NODE_RADIUS;
+
+                if (NODE_GLOW_PAD > 0) {
+                    g.append('rect')
+                        .attr('x', -hw - NODE_GLOW_PAD).attr('y', -hh - NODE_GLOW_PAD)
+                        .attr('width', nw + NODE_GLOW_PAD * 2).attr('height', nh + NODE_GLOW_PAD * 2)
+                        .attr('rx', NODE_GLOW_RADIUS)
+                        .attr('fill', isArchive ? GLOW_FILL_SPECIAL : GLOW_FILL_AGENT)
+                        .attr('stroke', 'none');
+                }
+
+                g.append('rect').attr('class', 'box-main')
+                    .attr('x', -hw).attr('y', -hh).attr('width', nw).attr('height', nh)
+                    .attr('rx', rx)
+                    .attr('fill', isArchive ? FILL_ARCHIVE : FILL_AGENT)
+                    .attr('stroke', ACCENT)
+                    .attr('stroke-width', NODE_BORDER)
+                    .style('backdrop-filter', `blur(${BACKDROP_BLUR}px) saturate(${BACKDROP_SAT}%)`)
+                    .style('-webkit-backdrop-filter', `blur(${BACKDROP_BLUR}px) saturate(${BACKDROP_SAT}%)`);
+
+                if (AGENT_ICON_NODES.has(node.id)) {
+                    appendAgentIcon(g, hw, hh);
+                }
+
+                if (PIXEL_FILL_NODES.has(node.id)) {
+                    appendPixelFill(g, node.id, nw, nh, hw, hh, rx);
+                }
+
+                appendNodeLabel(
+                    g,
+                    displayLabelLines(node.id),
+                    -hw,
+                    hh + NODE_LABEL_GAP,
+                    NODE_LABEL_LINE
+                );
+            }
+
+            // Drag
+            g.call(d3.drag()
+                .on('start', function () { d3.select(this).classed('dragging', true).raise(); })
+                .on('drag', function (event) {
+                    node.x = Math.max(DRAG_PAD, Math.min(W - DRAG_PAD, node.x + event.dx));
+                    node.y = Math.max(DRAG_PAD, Math.min(H - DRAG_PAD, node.y + event.dy));
+                    d3.select(this).attr('transform', `translate(${node.x},${node.y})`);
+                    updateEdges();
+                })
+                .on('end', function () { d3.select(this).classed('dragging', false); })
+            );
+        });
+
+        // ── Init ───────────────────────────────────────────────────────────────────
+        initKgSim();
+        nodeData.forEach(n => nodeGroups[n.id].attr('transform', `translate(${n.x},${n.y})`));
+        ensureKgBadge();
+        initFlowParticles();
+        updateEdges();
+        updateKgBadge();
+
+        window.addEventListener('resize', () => {
+            const oldW = W, oldH = H;
+            W = window.innerWidth; H = window.innerHeight;
+            kgCenter.x = kgCenter.x / oldW * W;
+            kgCenter.y = kgCenter.y / oldH * H;
+            svg.attr('width', W).attr('height', H);
+            d3.select('#bg-rect').attr('width', W).attr('height', H);
+            d3.select('#grid-rect').attr('width', W).attr('height', H);
+            initKgSim();
+            updateEdges();
+            updateKgBadge();
+        });
+
+        function animateCoreKg(now) {
+            requestAnimationFrame(animateCoreKg);
+            if (!coreKgSim) return;
+            kgAnimT = now * 0.001;
+            if (!coreKgSim.settled) coreKgSim.tick();
+            coreKgSim.draw(kgAnimT);
+            updateEdges();
+            updateKgBadge();
+            stepFlowParticles();
+            stepPixelFill(now);
+        }
+        requestAnimationFrame(animateCoreKg);
+    </script>
+</body>
+
+</html>
