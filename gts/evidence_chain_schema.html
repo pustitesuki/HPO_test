@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evidence Chain Schema</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            background: #F7F7F7;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        svg { display: block; width: 100%; height: 100%; }
+
+        .cell-shell { cursor: grab; }
+        .cell-shell.dragging { cursor: grabbing; }
+
+        .edge-idle {
+            fill: none;
+            stroke: #9BB4BE;
+            stroke-width: 1;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .edge-glow {
+            fill: none;
+            stroke: #00D4FF;
+            stroke-width: 1;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-dasharray: 5 4;
+            opacity: 0;
+        }
+
+        .cell {
+            width: 100%; height: 100%;
+            border-radius: 8px;
+            border: 1px solid #D6E8EE;
+            background: #FFFFFF;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.35s ease, box-shadow 0.35s ease;
+        }
+
+        .cell.audit-lit {
+            border-color: #00D4FF;
+            box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.35), 0 4px 18px rgba(0, 212, 255, 0.15);
+        }
+
+        .cell-head {
+            padding: 10px 12px;
+            border-bottom: 1px solid #E8F2F5;
+            background: #F4FAFC;
+        }
+
+        .cell-stage {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #5A8A9A;
+        }
+
+        .cell-record {
+            font-size: 14px;
+            font-weight: 600;
+            color: #0A3040;
+            margin-top: 3px;
+            line-height: 1.2;
+        }
+
+        .cell-fields {
+            padding: 6px 12px 10px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .field-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 4px 8px;
+            align-items: baseline;
+            padding: 6px 0;
+            border-bottom: 1px solid #EEF4F6;
+            font-size: 12px;
+            line-height: 1.3;
+        }
+
+        .field-name {
+            color: #0A3040;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .field-type {
+            font-weight: 500;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .field-ref {
+            grid-column: 1 / -1;
+            font-size: 12px;
+            font-weight: 600;
+            color: #007A9A;
+            background: #E8F9FD;
+            border: 1px solid #B8ECFA;
+            border-radius: 4px;
+            padding: 3px 8px;
+            width: fit-content;
+        }
+
+        .field-ref.lit {
+            background: #C8F4FF;
+            border-color: #00D4FF;
+        }
+
+        .cell-source .cell-head { background: #FAFCFD; }
+        .cell-source { border-style: solid; }
+
+        .type-id { color: #8A939C; }
+        .type-scalar { color: #5B6069; }
+        .type-enum { color: #5B4BA8; }
+        .type-struct { color: #2B6A9A; }
+        .type-prov { color: #9A5B12; }
+        .type-ref { color: #007A9A; }
+
+    </style>
+</head>
+
+<body>
+    <svg id="viz"></svg>
+    <script>
+        'use strict';
+
+        const ACCENT = '#00D4FF';
+        const GRID_SPACING = 38;
+        const GRID_DOT_OP = 0.09;
+        const CELL_W = 228;
+        const CELL_H = 320;
+        const SOURCE_H = 140;
+        const ROW_TOP = 0.32;
+        const ROW_BOTTOM = 0.64;
+        const CORNER_R = 8;
+        const DRAG_PAD = 40;
+        const AUDIT_STEP_MS = 900;
+        const PARTICLE_R = 7;
+        const TRAIL_LEN = 7;
+        const PARTICLE_SPEED = 0.038;
+
+        const ORDER = ['source', 'entity', 'clinical', 'evidence', 'rule', 'adj'];
+        const AUDIT_ORDER = ['adj', 'rule', 'evidence', 'clinical', 'entity', 'source'];
+
+        const TYPE = {
+            id: { cls: 'type-id' },
+            scalar: { cls: 'type-scalar' },
+            enum: { cls: 'type-enum' },
+            struct: { cls: 'type-struct' },
+            prov: { cls: 'type-prov' },
+            ref: { cls: 'type-ref' },
+        };
+
+        const STAGES = [
+            {
+                id: 'entity', record: 'ExtractedEntity', stage: 'Extraction',
+                fields: [
+                    { name: 'entityId', type: 'UUID', cat: 'id' },
+                    { name: 'documentId', type: 'Ref', cat: 'ref', link: 'Source' },
+                    { name: 'page', type: 'int', cat: 'scalar' },
+                    { name: 'snippet', type: 'str', cat: 'scalar' },
+                    { name: 'confidence', type: '0–1', cat: 'scalar' },
+                ],
+            },
+            {
+                id: 'clinical', record: 'NormalizedConcept', stage: 'Normalization',
+                fields: [
+                    { name: 'conceptId', type: 'UUID', cat: 'id' },
+                    { name: 'mappedFrom', type: 'Ref', cat: 'ref', link: 'Entity' },
+                    { name: 'system', type: 'ICD/SNOMED', cat: 'enum' },
+                    { name: 'code', type: 'str', cat: 'scalar' },
+                    { name: 'term', type: 'str', cat: 'scalar' },
+                ],
+            },
+            {
+                id: 'evidence', record: 'RetrievedEvidence', stage: 'Evidence',
+                fields: [
+                    { name: 'evidenceId', type: 'UUID', cat: 'id' },
+                    { name: 'concepts', type: 'Ref[]', cat: 'ref', link: 'Concept' },
+                    { name: 'guideline', type: 'MTUS/ODG', cat: 'enum' },
+                    { name: 'section', type: 'str', cat: 'scalar' },
+                    { name: 'criteria', type: '[]', cat: 'struct' },
+                ],
+            },
+            {
+                id: 'rule', record: 'RuleEvaluation', stage: 'Rules',
+                fields: [
+                    { name: 'ruleId', type: 'str', cat: 'id' },
+                    { name: 'evidence', type: 'Ref[]', cat: 'ref', link: 'Evidence' },
+                    { name: 'condition', type: 'Expr', cat: 'struct' },
+                    { name: 'result', type: 'met/not', cat: 'enum' },
+                    { name: 'version', type: 'SemVer', cat: 'prov' },
+                ],
+            },
+            {
+                id: 'adj', record: 'Determination', stage: 'Adjudication',
+                fields: [
+                    { name: 'determinationId', type: 'UUID', cat: 'id' },
+                    { name: 'justification', type: 'Ref', cat: 'ref', link: 'Rule' },
+                    { name: 'outcome', type: 'cert/mod', cat: 'enum' },
+                    { name: 'review', type: 'auto/human', cat: 'enum' },
+                    { name: 'auditHash', type: 'SHA-256', cat: 'prov' },
+                ],
+            },
+        ];
+
+        const SOURCE = {
+            id: 'source', record: 'SourceRecord', stage: 'Origin',
+            note: 'Page + char span in original document.',
+        };
+
+        const EDGES = [
+            { id: 'e-source-entity', from: 'source', to: 'entity' },
+            { id: 'e-entity-clinical', from: 'entity', to: 'clinical' },
+            { id: 'e-clinical-evidence', from: 'clinical', to: 'evidence' },
+            { id: 'e-evidence-rule', from: 'evidence', to: 'rule' },
+            { id: 'e-rule-adj', from: 'rule', to: 'adj' },
+        ];
+
+        // Chessboard: even index → bottom row, odd → top row, step=0.16 centered at 0.5
+        const initPos = {
+            source:   [0.10, ROW_BOTTOM],
+            entity:   [0.26, ROW_TOP],
+            clinical: [0.42, ROW_BOTTOM],
+            evidence: [0.58, ROW_TOP],
+            rule:     [0.74, ROW_BOTTOM],
+            adj:      [0.90, ROW_TOP],
+        };
+
+        let W = window.innerWidth;
+        let H = window.innerHeight;
+
+        const nodes = {};
+        ORDER.forEach(id => {
+            const w = CELL_W;
+            const h = id === 'source' ? SOURCE_H : CELL_H;
+            const [fx, fy] = initPos[id];
+            const meta = id === 'source' ? SOURCE : STAGES.find(s => s.id === id);
+            nodes[id] = { ...meta, x: W * fx, y: H * fy, w, h };
+        });
+
+        const svg = d3.select('#viz').attr('width', W).attr('height', H);
+        const defs = svg.append('defs');
+        const glowF = defs.append('filter').attr('id', 'particle-glow')
+            .attr('x', '-80%').attr('y', '-80%').attr('width', '260%').attr('height', '260%');
+        glowF.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur');
+        const merge = glowF.append('feMerge');
+        merge.append('feMergeNode').attr('in', 'blur');
+        merge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+        const dotPat = defs.append('pattern')
+            .attr('id', 'dots').attr('width', GRID_SPACING).attr('height', GRID_SPACING)
+            .attr('patternUnits', 'userSpaceOnUse');
+        dotPat.append('circle')
+            .attr('cx', GRID_SPACING / 2).attr('cy', GRID_SPACING / 2).attr('r', 0.9)
+            .attr('fill', '#007a9a').attr('opacity', GRID_DOT_OP);
+        svg.append('rect').attr('width', W).attr('height', H).attr('fill', 'url(#dots)');
+
+        const edgesLayer = svg.append('g');
+        const particlesLayer = svg.append('g').attr('filter', 'url(#particle-glow)');
+        const cellsLayer = svg.append('g');
+
+        function anchor(id, side) {
+            const n = nodes[id];
+            if (side === 'left') return { x: n.x - n.w / 2, y: n.y };
+            return { x: n.x + n.w / 2, y: n.y };
+        }
+
+        /** Orthogonal path with rounded corners — Syncflow Node Canvas style */
+        function orthPath(x1, y1, x2, y2) {
+            const r = CORNER_R;
+            if (Math.abs(y1 - y2) < 1) {
+                return `M${x1},${y1} L${x2},${y2}`;
+            }
+            let midX = (x1 + x2) / 2;
+            if (midX < x1 + r + 2) midX = x1 + r + 2;
+            const sy = Math.sign(y2 - y1);
+            return `M${x1},${y1}` +
+                ` L${midX - r},${y1}` +
+                ` Q${midX},${y1} ${midX},${y1 + sy * r}` +
+                ` L${midX},${y2 - sy * r}` +
+                ` Q${midX},${y2} ${midX + r},${y2}` +
+                ` L${x2},${y2}`;
+        }
+
+        function fieldsHtml(fields, litRef) {
+            return fields.map(f => {
+                const t = TYPE[f.cat];
+                const refBadge = f.cat === 'ref'
+                    ? `<span class="field-ref ${litRef ? 'lit' : ''}">→ ${f.link}</span>`
+                    : '';
+                return `<div class="field-row">
+                    <span class="field-name">${f.name}</span>
+                    <span class="field-type ${t.cls}">${f.type}</span>
+                    ${refBadge}
+                </div>`;
+            }).join('');
+        }
+
+        function cellHtml(d) {
+            if (d.id === 'source') {
+                return `<div class="cell cell-source">
+                    <div class="cell-head">
+                        <div class="cell-stage">${d.stage}</div>
+                        <div class="cell-record">${d.record}</div>
+                    </div>
+                    <div class="cell-fields" style="font-size:12px;color:#5A7A88;line-height:1.4">${d.note}</div>
+                </div>`;
+            }
+            return `<div class="cell" data-cell="${d.id}">
+                <div class="cell-head">
+                    <div class="cell-stage">${d.stage}</div>
+                    <div class="cell-record">${d.record}</div>
+                </div>
+                <div class="cell-fields" data-fields-for="${d.id}">
+                    ${fieldsHtml(d.fields, false)}
+                </div>
+            </div>`;
+        }
+
+        const nodeData = [...STAGES, SOURCE];
+        const cellGroups = {};
+
+        nodeData.forEach(d => {
+            const nd = nodes[d.id];
+            const g = cellsLayer.append('g')
+                .attr('class', 'cell-shell')
+                .attr('data-id', d.id)
+                .datum(nd);
+            cellGroups[d.id] = g;
+
+            g.append('foreignObject')
+                .attr('x', -nd.w / 2)
+                .attr('y', -nd.h / 2)
+                .attr('width', nd.w)
+                .attr('height', nd.h)
+                .append('xhtml:div')
+                .attr('xmlns', 'http://www.w3.org/1999/xhtml')
+                .html(cellHtml(d));
+
+            g.attr('transform', `translate(${nd.x},${nd.y})`);
+
+            g.call(d3.drag()
+                .on('start', function () {
+                    d3.select(this).classed('dragging', true).raise();
+                })
+                .on('drag', function (event, n) {
+                    n.x = Math.max(DRAG_PAD + n.w / 2, Math.min(W - DRAG_PAD - n.w / 2, n.x + event.dx));
+                    n.y = Math.max(DRAG_PAD + n.h / 2, Math.min(H - DRAG_PAD - n.h / 2, n.y + event.dy));
+                    d3.select(this).attr('transform', `translate(${n.x},${n.y})`);
+                    updateEdges();
+                })
+                .on('end', function () { d3.select(this).classed('dragging', false); })
+            );
+        });
+
+        function updateEdges() {
+            const edgeSel = edgesLayer.selectAll('.edge-group').data(EDGES, d => d.id);
+            const enter = edgeSel.enter().append('g').attr('class', 'edge-group');
+            enter.append('path').attr('class', 'edge-idle');
+            enter.append('path').attr('class', 'edge-glow')
+                .attr('data-edge-id', d => `${d.from}-${d.to}`);
+
+            enter.merge(edgeSel).each(function (d) {
+                const a = anchor(d.from, 'right');
+                const b = anchor(d.to, 'left');
+                const pathD = orthPath(a.x, a.y, b.x, b.y);
+                d3.select(this).select('.edge-idle').attr('d', pathD);
+                d3.select(this).select('.edge-glow').attr('d', pathD);
+            });
+            edgeSel.exit().remove();
+        }
+
+        updateEdges();
+
+        // ── Audit trail ───────────────────────────────────────────────────────────
+        let auditStep = 0;
+        let particle = null;
+        let lastAuditTick = 0;
+
+        function setCellLit(id, lit) {
+            const cell = cellGroups[id]?.select('foreignObject div.cell');
+            if (cell && !cell.empty()) cell.classed('audit-lit', lit);
+        }
+
+        function updateRefHighlights(activeId) {
+            nodeData.forEach(d => {
+                if (!d.fields) return;
+                cellGroups[d.id].select('foreignObject .cell-fields')
+                    .html(fieldsHtml(d.fields, d.id === activeId));
+            });
+        }
+
+        function runAuditStep() {
+            const idx = auditStep % AUDIT_ORDER.length;
+            AUDIT_ORDER.forEach((id, i) => setCellLit(id, i === idx));
+            updateRefHighlights(AUDIT_ORDER[idx]);
+
+            EDGES.forEach(e => {
+                const key = `${e.from}-${e.to}`;
+                const onTrail = idx < AUDIT_ORDER.length - 1 &&
+                    key === `${AUDIT_ORDER[idx + 1]}-${AUDIT_ORDER[idx]}`;
+                edgesLayer.select(`.edge-glow[data-edge-id="${key}"]`)
+                    .attr('opacity', onTrail ? 1 : 0);
+            });
+
+            if (idx < AUDIT_ORDER.length - 1) {
+                const next = AUDIT_ORDER[idx + 1];
+                const current = AUDIT_ORDER[idx];
+                const path = edgesLayer.select(`.edge-glow[data-edge-id="${next}-${current}"]`).node();
+                if (path) {
+                    particle = { path, t: 1, dir: -1, edgeKey: `${next}-${current}` };
+                }
+            } else {
+                particle = null;
+            }
+
+            auditStep++;
+        }
+
+        function stepParticle(now) {
+            particlesLayer.selectAll('*').remove();
+
+            edgesLayer.selectAll('.edge-glow').each(function () {
+                const el = d3.select(this);
+                if (+el.attr('opacity') > 0) {
+                    el.attr('stroke-dashoffset', -(now / 35) % 18);
+                }
+            });
+
+            if (!particle) return;
+
+            particle.t += particle.dir * PARTICLE_SPEED;
+            if (particle.t <= 0) {
+                edgesLayer.select(`.edge-glow[data-edge-id="${particle.edgeKey}"]`).attr('opacity', 0);
+                particle = null;
+                return;
+            }
+
+            const len = particle.path.getTotalLength();
+            const head = particle.path.getPointAtLength(particle.t * len);
+
+            for (let i = TRAIL_LEN; i >= 0; i--) {
+                const tt = Math.max(0, particle.t - i * 0.014);
+                const pt = particle.path.getPointAtLength(tt * len);
+                const fade = 1 - i / (TRAIL_LEN + 1);
+                particlesLayer.append('circle')
+                    .attr('cx', pt.x).attr('cy', pt.y)
+                    .attr('r', PARTICLE_R * (0.45 + fade * 0.55))
+                    .attr('fill', ACCENT)
+                    .attr('opacity', fade * 0.85);
+            }
+
+            particlesLayer.append('circle')
+                .attr('cx', head.x).attr('cy', head.y)
+                .attr('r', PARTICLE_R + 5)
+                .attr('fill', 'none')
+                .attr('stroke', '#FFFFFF')
+                .attr('stroke-width', 2)
+                .attr('opacity', 0.9);
+            particlesLayer.append('circle')
+                .attr('cx', head.x).attr('cy', head.y)
+                .attr('r', PARTICLE_R + 1.5)
+                .attr('fill', '#FFFFFF')
+                .attr('opacity', 0.95);
+            particlesLayer.append('circle')
+                .attr('cx', head.x).attr('cy', head.y)
+                .attr('r', PARTICLE_R)
+                .attr('fill', ACCENT);
+        }
+
+        function auditLoop(now) {
+            requestAnimationFrame(auditLoop);
+            if (now - lastAuditTick >= AUDIT_STEP_MS) {
+                lastAuditTick = now;
+                runAuditStep();
+            }
+            stepParticle(now);
+        }
+
+        lastAuditTick = performance.now();
+        runAuditStep();
+        requestAnimationFrame(auditLoop);
+
+        window.addEventListener('resize', () => {
+            W = window.innerWidth;
+            H = window.innerHeight;
+            svg.attr('width', W).attr('height', H);
+            svg.select('rect').attr('width', W).attr('height', H);
+            ORDER.forEach(id => {
+                const nd = nodes[id];
+                const [fx, fy] = initPos[id];
+                nd.x = W * fx;
+                nd.y = H * fy;
+                cellGroups[id].attr('transform', `translate(${nd.x},${nd.y})`);
+            });
+            updateEdges();
+        });
+    </script>
+</body>
+
+</html>
