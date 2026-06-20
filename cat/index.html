@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cat Game — control your cat</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #87ceeb; }
+      #app { width: 100vw; height: 100vh; display: block; }
+      #hud {
+        position: fixed; left: 16px; bottom: 16px;
+        font: 14px/1.5 -apple-system, system-ui, sans-serif;
+        color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.6);
+        background: rgba(0,0,0,.35); padding: 10px 14px; border-radius: 10px;
+        user-select: none; pointer-events: none;
+      }
+      #hud b { color: #ffd84d; }
+      #loading {
+        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        font: 18px system-ui, sans-serif; color: #333; background: #87ceeb;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="app"></canvas>
+    <div id="hud">
+      <b>W / ↑</b> forward &nbsp; <b>S / ↓</b> back &nbsp; <b>A / ←</b> turn left &nbsp; <b>D / →</b> turn right<br />
+      <b>Shift</b> run &nbsp; <b>Space</b> jump &nbsp; <b>mouse</b> camera &nbsp; <b>wheel</b> zoom
+    </div>
+    <div id="loading">Loading model…</div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
